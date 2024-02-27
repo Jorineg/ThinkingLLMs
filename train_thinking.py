@@ -247,7 +247,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         }
 
         def transform_strategyqa(example):
-            example["targets"] = example["targets"][0].split(".")[0]
+            example["targets"] = [example["targets"][0].split(".")[0]]
             return example
 
         extra_transforms = {
@@ -273,15 +273,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         for config in tqdm(configs):
             dataset = load_dataset(args["train_file"], config)
             dataset = dataset.select_columns(select_columns)
-
-            # in case column targets is of type string, change to list of strings
-            if isinstance(dataset["train"]["targets"][0], str):
-
-                def targets_to_list(example):
-                    example["targets"] = [example["targets"]]
-                    return example
-
-                dataset = dataset.map(targets_to_list)
 
             dataset["train"] = dataset["train"].add_column(
                 "task", [config] * len(dataset["train"])
