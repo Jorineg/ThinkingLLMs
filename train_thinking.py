@@ -593,7 +593,8 @@ def rollout(
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
-            max_length=args["max_gen_length"],
+            max_length=args["max_gen_length"] + args["max_input_length"],
+            max_new_tokens=args["max_gen_length"],
         )
         completed_tensors = gen_output
         completed_tensors = pad_across_processes(
