@@ -295,7 +295,11 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             train_datasets.append(
                 dataset["train"].select(range(min(max_per_task, len(dataset["train"]))))
             )
-            val_datasets.append(dataset["validation"].select(range(min(max_test_per_task, len(dataset["validation"])))))
+            val_datasets.append(
+                dataset["validation"].select(
+                    range(min(max_test_per_task, len(dataset["validation"])))
+                )
+            )
             val_small_datasets.append(
                 dataset["validation"].select(range(min(10, len(dataset["validation"]))))
             )
@@ -374,6 +378,8 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 # input_encode = tokenizer(input, add_special_tokens=False)
                 # output_encode = tokenizer(output, add_special_tokens=False)
                 prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
+                if len(prefix_encode["input_ids"]) > args["max_input_length"]:
+                    continue
 
                 # input_ids = (
                 #     input_encode["input_ids"]
