@@ -1,15 +1,17 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
-exp_name="mathqa_python_sdp_galactica_125m_reft"
-model_dir="ppo_paper_final_new/_models_outputs_rl_small/mathqa_python_sdp_galactica_125m_reft"
-train_file="data/mathqa_python_sdp.json"
-test_file="data/mathqa_test_set.json"
-engine='python' # 'python' or 'nl'
+exp_name="bigbench_nl_galactica_125m_reft_01"
+model_dir="thinking_models/_models_outputs_rl_small/bigbench_nl_galactica_125m_reft_01"
+# train_file="data/gsm8k_python_sdp.json"
+# test_file="data/gsm8k_test_set.json"
+train_file="tasksource/bigbench"
+engine='nl' # 'python' or 'nl'
 
-model_name_or_path="ppo_paper_final_new/_models_outputs_sft_small/mathqa_python_sdp_galactica_125m/global_step_12720_epoch_40/"
-tokenizer_name_or_path="ppo_paper_final_new/_models_outputs_sft_small/mathqa_python_sdp_galactica_125m/global_step_12720_epoch_40/"
-ref_model_name_or_path="ppo_paper_final_new/_models_outputs_sft_small/mathqa_python_sdp_galactica_125m/global_step_12720_epoch_40/"
+model_name_or_path="facebook/galactica-125m"
+tokenizer_name_or_path="facebook/galactica-125m"
+ref_model_name_or_path="facebook/galactica-125m"
 
+max_per_task=1000
 keep_num_ckpt='0'
 batch_size="32"
 mini_batch_size="32"
@@ -33,10 +35,10 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="300"
-max_gen_length="700"
+max_input_length="1500"
+max_gen_length="548"
 wandb_log="True"
-wandb_project="ReFT_small"
+wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
 
 num_processes='1'
@@ -47,7 +49,7 @@ accelerate launch \
             --config_file ./default_config_deepspeed.yaml \
             --num_processes=${num_processes} \
             --main_process_port=${main_process_port} \
-    train_rl_reft.py \
+    train_thinking.py \
             --model_name_or_path "${model_name_or_path}" \
             --tokenizer_name_or_path "${tokenizer_name_or_path}" \
             --ref_model_name_or_path "${ref_model_name_or_path}" \
@@ -82,5 +84,6 @@ accelerate launch \
             --engine "${engine}" \
             --adv_whitening "${adv_whitening}" \
             --keep_num_ckpt "${keep_num_ckpt}" \
+            --max_per_task "${max_per_task}" \
             1> >(tee "${model_dir}"/"${exp_name}".log) \
             2> >(tee "${model_dir}"/"${exp_name}".err >&2)

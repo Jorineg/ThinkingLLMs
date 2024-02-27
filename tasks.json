@@ -1,0 +1,431 @@
+[
+    {
+        "id": 1,
+        "name": "count chars in english words",
+        "description": "count the number of characters in a normal english word",
+        "dataset": "kurtn718/scrambled_words",
+        "question_column": "word",
+        "prompt": "How many characters are in this word. Answer with only a number.",
+        "result_type": {
+            "type": "integer"
+        }
+    },
+    {
+        "id": 2,
+        "name": "count chars in scrambled words",
+        "description": "count the number of characters in a scrambled english word",
+        "dataset": "kurtn718/scrambled_words",
+        "question_column": "scrambled",
+        "prompt": "How many characters are in this word of scrambled letters. Answer with only a number.",
+        "result_type": {
+            "type": "integer"
+        }
+    },
+    {
+        "id": 3,
+        "name": "maze best path in coordinate list",
+        "description": "find the best path through a maze. Result is a list of coordinates",
+        "dataset": "laion/strategic_game_maze",
+        "answer_column": "Path",
+        "prompt": "The following is a maze in ASCII representation. Walls are noted with #. The paths are denoted with a whitespace. Find the best path through the maze from S to E. Output the path as a list like this [ [x1, y1], [x2, y2], ...], starting with the start and ending with the end. Note that the top left corner is (0, 0).",
+        "result_type": {
+            "type": "list",
+            "subtype": {
+                "type": "list",
+                "subtype": {
+                    "type": "integer"
+                }
+            }
+        }
+    },
+    {
+        "id": 4,
+        "name": "maze best path as directions string",
+        "description": "find the best path through a maze. Result is a string of directions",
+        "dataset": "laion/strategic_game_maze",
+        "prompt": "The following is a maze in ASCII representation. Walls are noted with #. The paths are denoted with a whitespace. Find the best path through the maze from S to E. Output the path as a string of directions like this 'UURRDDR'.",
+        "result_type": {
+            "type": "string"
+        }
+    },
+    {
+        "id": 5,
+        "name": "count chars in paragraph",
+        "description": "count the number of characters in a short paragraph",
+        "dataset": "olmer/wiki_paragraphs",
+        "question_column": "text",
+        "prompt": "How many characters are in this paragraph. Answer with only a number.",
+        "result_type": {
+            "type": "integer"
+        }
+    },
+    {
+        "id": 6,
+        "name": "count words in paragraph",
+        "description": "count the number of words in a short paragraph",
+        "dataset": "olmer/wiki_paragraphs",
+        "question_column": "text",
+        "prompt": "How many words are in this paragraph. The number of words is defined as how many parts there are if you split at whitespace and new lines. Answer with only a number.",
+        "result_type": {
+            "type": "integer"
+        }
+    },
+    {
+        "id": 7,
+        "name": "chess next move",
+        "description": "find the next best move in a chess game",
+        "dataset": "laion/strategic_game_chess",
+        "prompt": "The following is a chess board in ASCII representation. The pieces are denoted with their first letter, and the color is denoted with case. Find the best next move for the white player. Output the move as a string like this 'e2e4'.",
+        "result_type": {
+            "type": "string"
+        }
+    },
+   {
+        "id": 8,
+        "name": "RACE high school",
+        "description": "Text based MC questions for high school students",
+        "dataset": "race",
+        "subset": "high",
+        "question_column": ["article", "question", "options"],
+        "answer_column": "answer",
+        "prompt": "Read the article and answer the question. Choose the best answer from the given options. The first option is A, the second is B, and so on. Answer with the letter of the correct option.",
+        "result_type": {
+            "type": "char"
+        }
+   },
+   {
+        "id": 9,
+        "name": "SuperGLUE cb",
+        "description": "premise and hypothesis, decide for entailment, contradiction or neutral",
+        "dataset": "super_glue",
+        "subset": "cb", 
+        "question_column": ["premise", "hypothesis"],
+        "answer_column": "label",
+        "prompt": "Read the premise and hypothesis (separated by blank line) and decide if the hypothesis is entailed by the premise, contradicts the premise, or is neutral to the premise. Answer with 'entailment', 'contradiction', or 'neutral'.",
+        "result_type": {
+            "type": "string"
+        }
+    },
+    {
+        "id": 10,
+        "name": "SuperGLUE copa",
+        "description": "premise, choice1, choice2, decide for the correct choice that is either the cause or the effect",
+        "dataset": "super_glue",
+        "subset": "copa",
+        "question_column": ["premise", "choice1", "choice2", "question"],
+        "answer_column": "label",
+        "prompt": "Read the premise and two choices (each separated by blank line) and decide which choice is either the cause or the effect of the premise. Answer with 'choice1' or 'choice2'.",
+        "result_type": {
+            "type": "string"
+        }
+    },
+    {
+        "id": 11,
+        "name": "SuperGLUE multirc",
+        "description": "multiple choice questions with multiple correct answers",
+        "dataset": "super_glue",
+        "subset": "multirc",
+        "question_column": ["passage", "question", "answer"],
+        "prompt": "Read the passage, the question and the answer option. Decide if the answer is one correct option (there could potentially be other correct options) or not given the text. Answer with 'True' or 'False'.",
+        "result_type": {
+            "type": "boolean"
+        }
+    },
+    {
+        "id": 12,
+        "name": "SuperGLUE record",
+        "description": "passage and statement containing a blank, decide for the correct word to fill in the blank",
+        "dataset": "super_glue",
+        "subset": "record",
+        "question_column": ["passage", "query"],
+        "answer_column": "answers",
+        "prompt": "Read the passage and the statement containing a @placeholder. Decide which word fills the placeholder correctly. Answer with only the word.",
+        "result_type": {
+            "type": "string"
+        }
+    },
+    {
+        "id": 13,
+        "name": "SuperGLUE rte",
+        "description": "premise and hypothesis, decide for entailment, or not entailment",
+        "dataset": "super_glue",
+        "subset": "rte",
+        "question_column": ["premise", "hypothesis"],
+        "answer_column": "label",
+        "prompt": "Read the premise and hypothesis (separated by blank line) and decide if the hypothesis is entailed by the premise or not. Answer with 'entailment' or 'not_entailment'.",
+        "result_type": {
+            "type": "string"
+        }
+    },
+    {
+        "id": 14,
+        "name": "SuperGLUE wic without word",
+        "description": "two sentences with same word, decide for same meaning or not",
+        "dataset": "super_glue",
+        "subset": "wic",
+        "question_column": ["sentence1", "sentence2"],
+        "answer_column": "label",
+        "prompt": "Read the two sentences, find the word that appears in both sentences and decide if the word has the same meaning in both sentences. Answer with 'True' or 'False'.",
+        "result_type": {
+            "type": "boolean"
+        }
+    },
+    {
+        "id": 15,
+        "name": "MATH",
+        "description": "very hard math problems",
+        "dataset": "hendrycks/competition_math",
+        "question_column": "problem",
+        "prompt": "Solve the math problem. Answer with only the final result as a latex expression. Write matrix entries as x/y and all other fractions as \\frac{x}{y}. For coefficients, do not include a multiplication symbol. For expressions with multiple variables, order the variables alphabetically. For polynomials, express them in decreasing degree order. ",
+        "result_type": {
+            "type": "string"
+        }
+    },
+    {
+        "id": 16,
+        "name": "gsm8k",
+        "description": "Grade school math word problems",
+        "dataset": "gsm8k",
+        "subset": "main",
+        "question_column": "question",
+        "prompt": "Solve the math problem. Answer with only the final result as a number.",
+        "result_type": {
+            "type": "integer"
+        }
+    },
+    {
+        "id": 17,
+        "name": "AquaRat",
+        "description": "Math word problems with multiple choice answers",
+        "dataset": "aqua_rat",
+        "question_column": ["question", "options"],
+        "answer_column": "correct",
+        "prompt": "Solve the math problem. Choose the best answer from the given options. Answer with only the letter of the correct option.",
+        "result_type": {
+            "type": "char"
+        }
+    },
+    {
+        "id": 18,
+        "name": "ARC challenge",
+        "description": "Difficult science questions with multiple choice answers",
+        "dataset": "allenai/ai2_arc",
+        "subset": "ARC-Challenge",
+        "question_column": ["question", "choices"],
+        "prompt": "Answer the question with the best option from the given options. Answer with the letter of the correct option.",
+        "result_type": {
+            "type": "char"
+        }
+    },
+    {
+        "id": 19,
+        "name": "ARC easy",
+        "description": "Easy science questions with multiple choice answers",
+        "dataset": "allenai/ai2_arc",
+        "subset": "ARC-Easy",
+        "question_column": ["question", "choices"],
+        "prompt": "Answer the question with the best option from the given options. Answer with the letter of the correct option.",
+        "result_type": {
+            "type": "char"
+        }
+    },{
+        "id": 20,
+        "name": "crossword guesses",
+        "description": "given a crossword clue, the length of the word and the date of publication, make up to 5 guesses",
+        "dataset": "jeggers/more_crosswords",
+        "prompt": "Given the crossword clue, the length of the word and the date of publication, make up to 5 guesses for the word. Answer with a list of words like this ['word1', 'word2', ...].",
+        "result_type": {
+            "type": "list",
+            "subtype": {
+                "type": "string"
+            }
+        }
+    },{
+        "id": 21,
+        "name": "crossword guess with hints",
+        "description": "given a crossword clue, the length of the word, some letters as hints and the date of publication, make a guess for the word",
+        "dataset": "jeggers/more_crosswords",
+        "prompt": "Given the crossword clue, the length of the word, one or some letters and the date of publication, make a guess for the word. Answer with only the word.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 22,
+        "name": "full crossword puzzle",
+        "description": "given a crossword puzzle, solve it",
+        "dataset": "jeggers/full_crossword_puzzles",
+        "prompt": "You will be given a crossword puzzle. It contains either 6 or 8 clues for words and a type. The clue always ends with the year it was written in. You will also get the shape of the puzzle as a string. Type 'x-x-x':\nxxxxx\nx x x\nxxxxx\nx x x\nxxxxx\n\nType 'x-x-x-x':\nxxxxxx\nx x x x\nxxxxxx\nx x x x\nxxxxxx\nx x x x\nxxxxxx\n\nType '-x-x-x-':\n x x x \nxxxxxx\n x x x \nxxxxxx\n x x x \nxxxxxx\n x x x \n\nType 'x--x--x':\nxxxxxx\nx  x  x\nx  x  x\nxxxxxx\nx  x  x\nx  x  x\nxxxxxx\n\nx always denotes a character and the whitespace is an empty field. The clues first half of the clues is for the rows from top to bottom. The second half is for the columns. Solve it and answer with the words in the puzzle in the order of the clues. Answer with a list of words like this with all capital letters. ['word1', 'word2', ...].",
+        "result_type": {
+            "type": "list",
+            "subtype": {
+                "type": "string"
+            }
+        }
+    },{
+        "id": 23,
+        "name": "asdiv",
+        "description": "Mostly simple math word problems",
+        "dataset": "allenai/lila",
+        "subset": "asdiv",
+        "question_column": "input",
+        "answer_column": "output_answer",
+        "prompt": "Solve the math problem. Answer with only the final result as a number.",
+        "result_type": {
+            "type": "integer"
+        }
+    },{
+        "id": 24,
+        "name": "dolphin-t2",
+        "description": "Math word problems, moslty equations. Somtimes asked for multiple numbers",
+        "dataset": "allenai/lila",
+        "subset": "dolphin_t2_final",
+        "question_column": "input",
+        "prompt": "Solve the math problem. Answer with the result numbers in a list like this [number1, number2, ...]. If there is only one number, answer with a list with only one number.",
+        "result_type": {
+            "type": "list",
+            "subtype": {
+                "type": "integer"
+            }
+        }
+    },{
+        "id": 25,
+        "name": "LogiQA 2.0",
+        "description": "Logical, very hard questions with given context and answer options",
+        "dataset": "baber/logiqa2",
+        "question_column": ["text", "question", "options"],
+        "answer_column": "answer",
+        "prompt": "Read the context and answer the question. Choose the best answer from the given options. The first given answer is 0, the second 1 and so on... Answer with only the number of the correct option.",
+        "result_type": {
+            "type": "integer"
+        }
+    },{
+        "id": 26,
+        "name": "drop",
+        "description": "reading comprehension with simple math reasoning",
+        "dataset": "drop",
+        "question_column": ["passage", "question"],
+        "prompt": "Read the passage and answer the question. Answer with only the final answer. It is either a number or a string that is a direct quote from the passage.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 27,
+        "name": "mawps-ar",
+        "description": "Math word problems collection",
+        "dataset": "MU-NLPC/Calc-mawps",
+        "subset": "original-splits",
+        "question_column": "question",
+        "answer_column": "result_float",
+        "prompt": "Solve the math problem. Answer with only the final result as a number. In case of a fraction, answer with the result in decimal form with up to 6 decimal places.",
+        "result_type": {
+            "type": "float"
+        }
+    },{
+        "id": 28,
+        "name": "bigbench",
+        "description": "Huge collection of 169 different tasks",
+        "dataset": "tasksource/bigbench",
+        "question_column": ["inputs", "subset"],
+        "answer_column": "multiple_choice_targets",
+        "prompt": "This is a task of a very diverse set of tasks. Probably it is a question and self explanatory. If not you have to figure out by yourself. You will be given the name of the task set, the input question/statement and a list of options (empty list = no options). If there are given options, answer with the best choice. Otherwise you have to figure out the answer by yourself.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 29,
+        "name": "ifQA",
+        "description": "If-then questions with context",
+        "dataset": "jeggers/ifqa",
+        "question_column": ["context", "question"],
+        "answer_column": "answers",
+        "prompt": "Read the context and answer the question. Don't write anything but the answer.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 30,
+        "name": "ifQA without context",
+        "description": "If-then questions without context",
+        "dataset": "jeggers/ifqa",
+        "question_column": "question",
+        "answer_column": "answers",
+        "prompt": "Answer the question. Don't write anything but the answer.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 31,
+        "name": "What letter is in position x?",
+        "description": "Given a word and a position, find the letter in that position",
+        "dataset": "kurtn718/scrambled_words",
+        "prompt": "Given a word and a position, find the letter in that position. Answer with only the letter.",
+        "result_type": {
+            "type": "char"
+        }
+    },{
+        "id": 32,
+        "name": "unscramble",
+        "description": "Unscramble a word",
+        "dataset": "kurtn718/scrambled_words",
+        "question_column": "scrambled",
+        "answer_column": "word",
+        "prompt": "Unscramble the word. Answer with only the word.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 33,
+        "name": "strategyqa",
+        "description": "QA with implicit requrired reasoning. True/false questions",
+        "dataset": "wics/strategy-qa",
+        "question_column": "question",
+        "answer_column": "answer",
+        "prompt": "Answer with only true/false.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 34,
+        "name": "bamboogle",
+        "description": "Multi hop QA",
+        "dataset": "chiayewken/bamboogle",
+        "question_column": "Question",
+        "answer_column": "Answer",
+        "prompt": "Answer the question. Don't write anything but the answer. Dates with day are formatted as Month Day, Year. If there is a number with a unit, write the number and the unit separated by a whitespace. Numbers other than years with more than 3 digits are formatted with a comma every 3 digits.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 35,
+        "name": "hotpotqa no context",
+        "description": "multi step QA without context",
+        "dataset": "hotpot_qa",
+        "question_column": "question",
+        "answer_column": "answer",
+        "prompt": "Answer the question. Don't write anything but the answer. Numbers (other than years) are formatted with a comma every 3 digits.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 36,
+        "name": "hotpotqa with context",
+        "description": "multi step QA with context",
+        "dataset": "hotpot_qa",
+        "question_column": ["context", "question"],
+        "answer_column": "answer",
+        "prompt": "Read the context and answer the question. Don't write anything but the answer. Numbers (other than years) are formatted with a comma every 3 digits.",
+        "result_type": {
+            "type": "string"
+        }
+    },{
+        "id": 37,
+        "name": "fermi question. Number 'guessing'",
+        "description": "Answer a question that involves multiple estimates and some math",
+        "dataset": "jeggers/fermi",
+        "question_column": "question",
+        
+        
+
+
+
+]

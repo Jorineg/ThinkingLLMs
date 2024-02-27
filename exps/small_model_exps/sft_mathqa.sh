@@ -9,8 +9,12 @@ gradient_accumulation_steps="1"
 train_file="data/mathqa_python_sdp.json"
 test_file="data/mathqa_test_set.json"
 engine="python" # 'python' or 'nl'
-model_name_or_path="hf_models/galactica-125m"
-tokenizer_name_or_path="hf_models/galactica-125m"
+# model_name_or_path="hf_models/galactica-125m"
+model_name_or_path="facebook/galactica-125m"
+
+# tokenizer_name_or_path="hf_models/galactica-125m"
+tokenizer_name_or_path="facebook/galactica-125m"
+
 model_dir="ppo_paper_final_new/_models_outputs_sft_small/${exp_name}/"
 wandb_run_name="${exp_name}"
 wandb_log="True"
@@ -30,7 +34,7 @@ saving_step_freq="-100"
 seed="42"
 max_input_length="1024"
 
-num_processes='8'
+num_processes='1'
 main_process_port='8888'
 
 mkdir -p "${model_dir}"

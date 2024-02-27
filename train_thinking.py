@@ -53,6 +53,10 @@ import numpy as np
 import wandb
 import shutil
 from prettytable import PrettyTable
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 tqdm = partial(tqdm, ncols=0, leave=False)
 
@@ -63,18 +67,34 @@ answer_trigger = None
 
 
 def setup_cot(src_name):
-    assert src_name in ["gsm8k", "mathqa", "svamp", "mathqa-numeric"]
+    assert src_name in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "bigbench"]
     global instruction
     global cot_trigger
     global answer_trigger
+    global extra_instruction_announce
     # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
-    instruction = "Question:\n"
-    cot_trigger = "\nAnswer reasoning:\n"
-    answer_trigger = "\nTherefore, the answer is: "
+    answer_trigger = "ANSWER: "
+    instruction = f"""
+    This is a task of a very diverse set of tasks.
+    Probably it is a question and self explanatory.
+    If not you have to figure out by yourself.
+    You will be given the name of the task set,
+    the input question/statement and a list of options (empty list = no options).
+    If there are given options, answer with the best choice.
+    Otherwise you have to figure out the answer by yourself.
+    You can think about the question before you answer.
+    Use at most {args["max_gen_length"]} words for your thinking+answer. 
+    To indicate your answer, write {answer_trigger} before your answer.\n\n
+    """
+    extra_instruction_announce = (
+        "Here is an extra instruction, specifically for this task: "
+    )
+    cot_trigger = f"BOT:"
     return
 
 
 post_process_final_answer_fn_mapper = {
+    "bigbench": lambda x: x,
     "gsm8k": lambda x: float(x.replace(",", "").strip()),
     "svamp": lambda x: float(x.replace(",", "").strip()),
     "mathqa": lambda x: x.lower().replace('"', "").replace("'", "").strip(),
@@ -108,8 +128,38 @@ post_process_answer_cot_fn_mapper = {
     ("nl", "mathqa-numeric"): lambda answer_cot: [
         floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
     ],
+    ("nl", "bigbench"): lambda answer_cot: [
+        res.split(answer_trigger)[-1] for res in answer_cot
+    ],
 }
+
+
+def check_bigbench_answer(extracted_ans, target_answer):
+    if isinstance(target_answer, list):
+        return extracted_ans in target_answer
+    else:
+        return extracted_ans == target_answer
+
+
+def compare_and_calculate_reward(extracted_ans, target_answer, multiple_choice_targets):
+    reward = 0
+    if isinstance(target_answer, list):
+        reward = int(extracted_ans in target_answer)
+    else:
+        reward = int(extracted_ans == target_answer)
+
+    if (
+        multiple_choice_targets is not None
+        and reward == 0
+        and extracted_ans in multiple_choice_targets
+    ):
+        reward = 0.1
+
+    return reward
+
+
 compare_answer_fn_mapper = {
+    "bigbench": check_bigbench_answer,
     "gsm8k": lambda extracted_ans, target_answer: abs(extracted_ans - target_answer)
     <= 1e-2,
     "svamp": lambda extracted_ans, target_answer: abs(extracted_ans - target_answer)
@@ -166,20 +216,114 @@ def prepare_deepspeed_ref_model(model):
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
         # make raw dataset
+        exclude_sets = [
+            "few_shot_nlg",
+            "gem",
+            "linguistic_mappings",
+            "list_functions",
+            "minute_mysteries_qa",
+            "mult_data_wrangling",
+            "physics_questions",
+            "scientific_press_release",
+            "semantic_parsing_in_context_sparc",
+            "simple_arithmetic_json_multiple_choice",
+            "simple_arithmetic_multiple_targets_json",
+            "social_support",
+            "tellmewhy",
+            "topical_chat",
+            "unnatural_in_context_learning",
+        ]
+
+        extra_instructions = {
+            "auto_categorization": "If the answer is Pokemon, answer with pokeman. USA is U.S",
+            "codenames": "The result must be a list of words with comma separated and sorted alphabetically.",
+            "disfl_qa": "Answer with 'unknown' if not known from the context.",
+            "language_games": "Every answer ends with a ., ! or ?",
+            "matrix_shapes": "Give the shape of the resulting matrix.",
+            "polish_sequence_labeling": "Everything separated by a space is considered a word.",
+            "qa_wikipedia": "Alway answer with a single word. If the question asks for multiple things (e.g. colors, ...) just answer with the any of the requested things.",
+            "reasoning_about_colored_objects": "If the answer is a number, do not spell it out, just write the number.",
+            "semantic_parsing_spider": "answer in all lower case",
+        }
+
+        def transform_strategyqa(example):
+            example["targets"] = example["targets"][0].split(".")[0]
+            return example
+
+        extra_transforms = {
+            "strategyqa": transform_strategyqa,
+        }
+
+        HF_API_KEY = os.getenv("HF_API_KEY")
+        headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+        API_URL = f"https://datasets-server.huggingface.co/splits?dataset={args['train_file']}"
+        response = requests.get(API_URL, headers=headers)
+        response.raise_for_status()
+        info = response.json()
+        configs = set([split["config"] for split in info["splits"]])
+        configs = [config for config in configs if config not in exclude_sets]
+
+        max_per_task = args["max_per_task"]
+
+        train_datasets = []
+        val_datasets = []
+        val_small_datasets = []
+        val_tiny_datasets = []
+        select_columns = ["inputs", "targets", "multiple_choice_targets"]
+        for config in tqdm(configs[:5]):
+            dataset = load_dataset(args["train_file"], config)
+            dataset = dataset.select_columns(select_columns)
+
+            # in case column targets is of type string, change to list of strings
+            if isinstance(dataset["train"]["targets"][0], str):
+                dataset = dataset.map(lambda x: {"targets": [x["targets"]]})
+
+            dataset["train"] = dataset["train"].add_column(
+                "task", [config] * len(dataset["train"])
+            )
+            dataset["validation"] = dataset["validation"].add_column(
+                "task", [config] * len(dataset["validation"])
+            )
+            if config in extra_transforms:
+                dataset = dataset.map(extra_transforms[config])
+            extra_instructions_for_task = extra_instructions.get(config, "")
+            dataset["train"] = dataset["train"].add_column(
+                "extra_instruction",
+                [extra_instructions_for_task] * len(dataset["train"]),
+            )
+            dataset["validation"] = dataset["validation"].add_column(
+                "extra_instruction",
+                [extra_instructions_for_task] * len(dataset["validation"]),
+            )
+            train_datasets.append(
+                dataset["train"].select(range(min(max_per_task, len(dataset["train"]))))
+            )
+            val_datasets.append(dataset["validation"])
+            val_small_datasets.append(
+                dataset["validation"].select(range(min(10, len(dataset["validation"]))))
+            )
+            val_tiny_datasets.append(
+                dataset["validation"].select(range(min(2, len(dataset["validation"]))))
+            )
+
         raw_dataset = DatasetDict(
             {
-                "train": Dataset.from_list(json.load(open(args["train_file"], "r"))),
-                "test": Dataset.from_list(json.load(open(args["test_file"], "r"))),
+                "train": concatenate_datasets(train_datasets),
+                "test_all": concatenate_datasets(val_datasets),
+                "test_small": concatenate_datasets(val_small_datasets),
+                "test_tiny": concatenate_datasets(val_tiny_datasets),
             }
         )
         accelerator.print("Raw data:", raw_dataset)
 
         # make cot related info
-        src_name = raw_dataset["train"]["item_id"][0].split("_")[
-            0
-        ]  # e.g., gsm8k_0, gsm8k_1, gsm8k_2, ...
+        # src_name = raw_dataset["train"]["item_id"][0].split("_")[
+        #     0
+        # ]  # e.g., gsm8k_0, gsm8k_1, gsm8k_2, ...
+        src_name = "bigbench"
         setup_cot(src_name)
         accelerator.print("Using instruction:", instruction)
+        accelerator.print("Using extra_instruction:", extra_instruction_announce)
         accelerator.print("Using cot_trigger:", cot_trigger)
         accelerator.print("Using answer_trigger:", answer_trigger)
 
@@ -192,71 +336,86 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             all_keys = list(batch.keys())
             for item_values in zip(*(batch[k] for k in all_keys)):
                 item = {k: item_values[i] for i, k in enumerate(all_keys)}
-                item_id, question, answer_value, answer_cot = (
-                    item["item_id"],
-                    item["question"],
-                    item["answer_value"],
-                    item.get("answer_cot", None),
+                # item_id, question, answer_value, answer_cot = (
+                #     item["item_id"],
+                #     item["question"],
+                #     item["answer_value"],
+                #     item.get("answer_cot", None),
+                # )
+                inputs, targets, multiple_choice_targets, extra_instruction, task = (
+                    item["inputs"],
+                    item["targets"],
+                    item["multiple_choice_targets"],
+                    item["extra_instruction"],
+                    item["task"],
                 )
-                question = question.strip()
-                if answer_value is not None:
-                    answer_value = answer_value.strip()
 
-                if answer_cot:
-                    answer_cot = answer_cot.strip()
-                    if args["engine"] == "nl":
-                        answer_cot += f"{answer_trigger}{answer_value}"
+                if extra_instruction:
+                    extra_instruction = (
+                        f"{extra_instruction_announce}{extra_instruction}\n\n"
+                    )
 
-                input = f"{instruction}{question}{cot_trigger}"
-                output = f"{answer_cot}"
-                prefix_text = f"{instruction}{question}{cot_trigger}"
+                question = inputs.strip()
+
+                task = "Task name: " + task + "\n\n"
+                mc_options = (
+                    "Multiple choice options: " + str(multiple_choice_targets) + "\n\n"
+                )
+
+                # input = f"{instruction}{task}{extra_instruction}{question}{mc_options}{cot_trigger}"
+                # output = f"{answer_cot}"
+                prefix_text = f"{instruction}{task}{extra_instruction}{question}{mc_options}{cot_trigger}"
 
                 # Modify for particular datasets and engine
                 if (
-                    src_name in ["gsm8k", "mathqa", "svamp", "mathqa-numeric"]
+                    src_name
+                    in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "bigbench"]
                     and args["engine"] == "python"
                 ):
                     prefix_text += f'def solution():\n    """{question}"""\n'
 
-                input_encode = tokenizer(input, add_special_tokens=False)
-                output_encode = tokenizer(output, add_special_tokens=False)
+                # input_encode = tokenizer(input, add_special_tokens=False)
+                # output_encode = tokenizer(output, add_special_tokens=False)
                 prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
 
-                input_ids = (
-                    input_encode["input_ids"]
-                    + output_encode["input_ids"]
-                    + [tokenizer.eos_token_id]
-                )
-                labels = (
-                    [-100] * len(input_encode["input_ids"])
-                    + output_encode["input_ids"]
-                    + [tokenizer.eos_token_id]
-                )
-                attention_mask = [1] * len(input_ids)
+                # input_ids = (
+                #     input_encode["input_ids"]
+                #     + output_encode["input_ids"]
+                #     + [tokenizer.eos_token_id]
+                # )
+                # labels = (
+                #     [-100] * len(input_encode["input_ids"])
+                #     + output_encode["input_ids"]
+                #     + [tokenizer.eos_token_id]
+                # )
+                # attention_mask = [1] * len(input_ids)
                 prefix = prefix_encode["input_ids"]
                 prefix_attention_mask = prefix_encode["attention_mask"]
 
                 # Truncation
-                input_ids = input_ids[: args["max_input_length"]]
-                labels = labels[: args["max_input_length"]]
-                attention_mask = attention_mask[: args["max_input_length"]]
-                prefix = prefix[: args["max_input_length"]]
-                prefix_attention_mask = prefix_attention_mask[
-                    : args["max_input_length"]
-                ]
+                # input_ids = input_ids[: args["max_input_length"]]
+                # labels = labels[: args["max_input_length"]]
+                # attention_mask = attention_mask[: args["max_input_length"]]
+                # prefix = prefix[: args["max_input_length"]]
+                # prefix_attention_mask = prefix_attention_mask[
+                #     : args["max_input_length"]
+                # ]
 
                 ##
-                new_batch["input_ids"].append(input_ids)
-                new_batch["labels"].append(labels)
-                new_batch["attention_mask"].append(attention_mask)
+                # new_batch["input_ids"].append(input_ids)
+                # new_batch["labels"].append(labels)
+                # new_batch["attention_mask"].append(attention_mask)
                 new_batch["prefix"].append(prefix)
                 new_batch["prefix_attention_mask"].append(prefix_attention_mask)
                 ##
-                new_batch["item_id"].append(item_id)
+                # new_batch["item_id"].append(item_id)
                 new_batch["question"].append(question)
                 new_batch["prefix_text"].append(prefix_text)
-                new_batch["answer_cot"].append(answer_cot)
-                new_batch["answer_value"].append(answer_value)
+                # new_batch["answer_cot"].append(answer_cot)
+                # new_batch["answer_value"].append(answer_value)
+                new_batch["task"].append(task)
+                new_batch["targets"].append(targets)
+                new_batch["multiple_choice_targets"].append(multiple_choice_targets)
 
             return new_batch
 
@@ -281,6 +440,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 {
                     "src_name": src_name,
                     "instruction": instruction,
+                    "extra_instruction_announce": extra_instruction_announce,
                     "cot_trigger": cot_trigger,
                     "answer_trigger": answer_trigger,
                     "raw_dataset": str(raw_dataset),
@@ -288,18 +448,17 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 }
             )
 
-    def collate_fn(batch, _, tokenizer):
-        max_target_length = max([len(item["labels"]) for item in batch])
+    def collate_fn(batch, args, tokenizer):
+        # max_target_length = max([len(item["labels"]) for item in batch])
         max_prefix_length = max([len(item["prefix"]) for item in batch])
-
-        labels_left_padded = []
+        # labels_left_padded = []
         prefix_left_padded = []
         prefix_attention_mask_left_padded = []
 
         for item in batch:
-            labels_left_padded.append(
-                [-100] * (max_target_length - len(item["labels"])) + item["labels"]
-            )
+            # labels_left_padded.append(
+            #     [-100] * (max_target_length - len(item["labels"])) + item["labels"]
+            # )
             prefix_left_padded.append(
                 [tokenizer.pad_token_id] * (max_prefix_length - len(item["prefix"]))
                 + item["prefix"]
@@ -315,15 +474,20 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             "query_tensors_attention_mask": torch.BoolTensor(
                 prefix_attention_mask_left_padded
             ),
-            "answer_values": [item["answer_value"].replace(",", "") for item in batch],
-            "item_ids": torch.LongTensor(
-                [int(item["item_id"].split("_")[1]) for item in batch]
-            ),
+            # "answer_values": [item["answer_value"].replace(",", "") for item in batch],
+            "answer_values": [item["targets"] for item in batch],
+            # "item_ids": torch.LongTensor(
+            #     [int(item["item_id"].split("_")[1]) for item in batch]
+            # ),
+            "tasks": [item["task"] for item in batch],
+            "multiple_choice_targets": [
+                item["multiple_choice_targets"] for item in batch
+            ],
         }
         generate_prefix_kwargs = {
             "input_ids": torch.LongTensor(prefix_left_padded),
             "attention_mask": torch.BoolTensor(prefix_attention_mask_left_padded),
-            "labels": torch.LongTensor(labels_left_padded),
+            # "labels": torch.LongTensor(labels_left_padded),
         }
 
         return {
@@ -340,8 +504,8 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
     )
 
-    test_dataloader = DataLoader(
-        tokenized_dataset["test"],
+    test_all_dataloader = DataLoader(
+        tokenized_dataset["test_all"],
         shuffle=False,
         batch_size=args["eval_batch_size"],
         num_workers=args["num_workers"],
@@ -349,9 +513,38 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
     )
 
-    return (tokenized_dataset["train"], train_dataloader), (
-        tokenized_dataset["test"],
-        test_dataloader,
+    test_small_dataloader = DataLoader(
+        tokenized_dataset["test_small"],
+        shuffle=False,
+        batch_size=args["eval_batch_size"],
+        num_workers=args["num_workers"],
+        pin_memory=True,
+        collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
+    )
+
+    test_tiny_dataloader = DataLoader(
+        tokenized_dataset["test_tiny"],
+        shuffle=False,
+        batch_size=args["eval_batch_size"],
+        num_workers=args["num_workers"],
+        pin_memory=True,
+        collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
+    )
+
+    return (
+        (tokenized_dataset["train"], train_dataloader),
+        (
+            tokenized_dataset["test_all"],
+            test_all_dataloader,
+        ),
+        (
+            tokenized_dataset["test_small"],
+            test_small_dataloader,
+        ),
+        (
+            tokenized_dataset["test_tiny"],
+            test_tiny_dataloader,
+        ),
     )
 
 
@@ -384,6 +577,8 @@ def rollout(
     query_tensors_attention_mask,
     answer_values,
     src_name,
+    multiple_choice_targets=None,
+    tasks=None,
 ):
     model.eval()
     with torch.no_grad():
@@ -406,22 +601,41 @@ def rollout(
     completed_texts = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
-    programs = [text.strip().split(cot_trigger)[-1].strip() for text in completed_texts]
+    programs = [text.split(cot_trigger)[-1] for text in completed_texts]
+    if tasks is None:
+        tasks = ["" for _ in programs]
+    thinkings = [
+        (program.split(answer_trigger)[0], task)
+        for program, task in zip(programs, tasks)
+    ]
+
+    # calculate length of thinking with tokenization
+    for thinking, task in thinkings:
+        token_count = len(tokenizer(thinking, add_special_tokens=False)["input_ids"])
+        wandb.log({f"cot_length/{task}": token_count})
+
     execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
     correctness = []
     for i, extracted_ans in enumerate(execute_fn(programs)):
-        target_value = post_process_final_answer_fn_mapper[src_name](answer_values[i])
-        if extracted_ans is not None:
-            if args["engine"] == "game24" or args["engine"] == "calcn":
-                is_correct = extracted_ans
-            else:
-                if compare_answer_fn_mapper[src_name](extracted_ans, target_value):
-                    is_correct = 1
-                else:
-                    is_correct = 0.1
-        else:
-            is_correct = 0
-        correctness.append(is_correct)
+        target_value = answer_values[i]
+        mc_targets = multiple_choice_targets[i]
+        # target_value = post_process_final_answer_fn_mapper[src_name](answer_values[i])
+        # if extracted_ans is not None:
+        # if args["engine"] == "game24" or args["engine"] == "calcn":
+        #     is_correct = extracted_ans
+        # else:
+        #     if compare_answer_fn_mapper[src_name](extracted_ans, target_value):
+        #         is_correct = 1
+        #     else:
+        #         is_correct = 0.1
+        # else:
+        #     is_correct = 0
+        # if compare_answer_fn_mapper[src_name](extracted_ans, target_value):
+        #     is_correct = 1
+        # else:
+        #     is_correct = 0
+        reward = compare_and_calculate_reward(extracted_ans, target_value, mc_targets)
+        correctness.append(reward)
 
     model_input_ids = completed_tensors
     model_attention_mask = completed_tensors != tokenizer.pad_token_id
@@ -574,7 +788,11 @@ def train_one_epoch(
                     "query_tensors_attention_mask"
                 ],
                 answer_values=batch["ppo_forward_kwargs"]["answer_values"],
-                src_name=train_dataset[0]["item_id"].split("_")[0],
+                src_name="bigbench",
+                multiple_choice_targets=batch["ppo_forward_kwargs"][
+                    "multiple_choice_targets"
+                ],
+                tasks=batch["ppo_forward_kwargs"]["tasks"],
             )
             model.train()
             # preprocess
@@ -620,6 +838,8 @@ def train_one_epoch(
                     query_len_per_sample = torch.clamp(
                         torch.sum(cur_query_mask, dim=1), min=1.0
                     )  # (mini_bs,)
+                    # thinking starts after end of query and unil answer_trigger
+                    # thinking_len_per_sample = torch.clamp(
 
                     # Preprocess advantage and get metrics
                     cur_mask = cur_mask.type(cur_adv.dtype).contiguous()
@@ -1048,9 +1268,12 @@ def main(args):
     tokenizer.pad_token_id = 1
     tokenizer.eos_token_id = 2
 
-    (train_dataset, train_dataloader), (test_dataset, test_dataloader) = (
-        prepare_datasets_and_data_loaders(args, tokenizer)
-    )
+    (
+        (train_dataset, train_dataloader),
+        (test_all_dataset, test_all_dataloader),
+        (test_small_dataset, test_small_dataloader),
+        (test_tiny_dataset, test_tiny_dataloader),
+    ) = prepare_datasets_and_data_loaders(args, tokenizer)
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
     model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
@@ -1100,8 +1323,8 @@ def main(args):
     scheduler = get_constant_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_step
     )
-    model, optimizer, train_dataloader, test_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, test_dataloader
+    model, optimizer, train_dataloader, test_small_dataloader = accelerator.prepare(
+        model, optimizer, train_dataloader, test_small_dataloader
     )
     if ref_model is not None:
         if accelerator.distributed_type == "DEEPSPEED":
@@ -1127,8 +1350,8 @@ def main(args):
                 "ref_model": ref_model,
                 "train_dataset": train_dataset,
                 "train_dataloader": train_dataloader,
-                "test_dataset": test_dataset,
-                "test_dataloader": test_dataloader,
+                "test_dataset": test_small_dataset,
+                "test_dataloader": test_small_dataloader,
                 "optimizer": optimizer,
                 "scheduler": scheduler,
                 "global_step": global_step,
@@ -1150,7 +1373,11 @@ def main(args):
                 evaluate_result_dict = {
                     f"Eval.Gen.{k}": v
                     for k, v in evaluate_generation(
-                        args, model, test_dataset, test_dataloader, tokenizer
+                        args,
+                        model,
+                        test_small_dataset,
+                        test_small_dataloader,
+                        tokenizer,
                     ).items()
                 }
                 eval_log_dict.update(evaluate_result_dict)
@@ -1265,6 +1492,8 @@ if __name__ == "__main__":
         ###
         engine: str = field(default="python")
         adv_whitening: str = field(default="global")
+        ### new!
+        max_per_task: int = field(default=1000)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
