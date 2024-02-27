@@ -1,6 +1,7 @@
-torch==2.0.0
-torchvision==0.15.0
-torchaudio==2.0.0
+torch==2.2.1
+torchvision==0.17.1
+torchaudio==2.2.1
+wandb
 transformers==4.34.1
 accelerate==0.23.0
 datasets==2.14.6

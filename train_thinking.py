@@ -270,13 +270,18 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         val_small_datasets = []
         val_tiny_datasets = []
         select_columns = ["inputs", "targets", "multiple_choice_targets"]
-        for config in tqdm(configs[:5]):
+        for config in tqdm(configs):
             dataset = load_dataset(args["train_file"], config)
             dataset = dataset.select_columns(select_columns)
 
             # in case column targets is of type string, change to list of strings
             if isinstance(dataset["train"]["targets"][0], str):
-                dataset = dataset.map(lambda x: {"targets": [x["targets"]]})
+
+                def targets_to_list(example):
+                    example["targets"] = [example["targets"]]
+                    return example
+
+                dataset = dataset.map(targets_to_list)
 
             dataset["train"] = dataset["train"].add_column(
                 "task", [config] * len(dataset["train"])
