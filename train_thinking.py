@@ -216,105 +216,107 @@ def prepare_deepspeed_ref_model(model):
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
         # make raw dataset
-        exclude_sets = [
-            "few_shot_nlg",
-            "gem",
-            "linguistic_mappings",
-            "list_functions",
-            "minute_mysteries_qa",
-            "mult_data_wrangling",
-            "physics_questions",
-            "scientific_press_release",
-            "semantic_parsing_in_context_sparc",
-            "simple_arithmetic_json_multiple_choice",
-            "simple_arithmetic_multiple_targets_json",
-            "social_support",
-            "tellmewhy",
-            "topical_chat",
-            "unnatural_in_context_learning",
-        ]
+        # exclude_sets = [
+        #     "few_shot_nlg",
+        #     "gem",
+        #     "linguistic_mappings",
+        #     "list_functions",
+        #     "minute_mysteries_qa",
+        #     "mult_data_wrangling",
+        #     "physics_questions",
+        #     "scientific_press_release",
+        #     "semantic_parsing_in_context_sparc",
+        #     "simple_arithmetic_json_multiple_choice",
+        #     "simple_arithmetic_multiple_targets_json",
+        #     "social_support",
+        #     "tellmewhy",
+        #     "topical_chat",
+        #     "unnatural_in_context_learning",
+        # ]
 
-        extra_instructions = {
-            "auto_categorization": "If the answer is Pokemon, answer with pokeman. USA is U.S",
-            "codenames": "The result must be a list of words with comma separated and sorted alphabetically.",
-            "disfl_qa": "Answer with 'unknown' if not known from the context.",
-            "language_games": "Every answer ends with a ., ! or ?",
-            "matrix_shapes": "Give the shape of the resulting matrix.",
-            "polish_sequence_labeling": "Everything separated by a space is considered a word.",
-            "qa_wikipedia": "Alway answer with a single word. If the question asks for multiple things (e.g. colors, ...) just answer with the any of the requested things.",
-            "reasoning_about_colored_objects": "If the answer is a number, do not spell it out, just write the number.",
-            "semantic_parsing_spider": "answer in all lower case",
-        }
+        # extra_instructions = {
+        #     "auto_categorization": "If the answer is Pokemon, answer with pokeman. USA is U.S",
+        #     "codenames": "The result must be a list of words with comma separated and sorted alphabetically.",
+        #     "disfl_qa": "Answer with 'unknown' if not known from the context.",
+        #     "language_games": "Every answer ends with a ., ! or ?",
+        #     "matrix_shapes": "Give the shape of the resulting matrix.",
+        #     "polish_sequence_labeling": "Everything separated by a space is considered a word.",
+        #     "qa_wikipedia": "Alway answer with a single word. If the question asks for multiple things (e.g. colors, ...) just answer with the any of the requested things.",
+        #     "reasoning_about_colored_objects": "If the answer is a number, do not spell it out, just write the number.",
+        #     "semantic_parsing_spider": "answer in all lower case",
+        # }
 
-        def transform_strategyqa(example):
-            example["targets"] = [example["targets"][0].split(".")[0]]
-            return example
+        # def transform_strategyqa(example):
+        #     example["targets"] = [example["targets"][0].split(".")[0]]
+        #     return example
 
-        extra_transforms = {
-            "strategyqa": transform_strategyqa,
-        }
+        # extra_transforms = {
+        #     "strategyqa": transform_strategyqa,
+        # }
 
-        HF_API_KEY = os.getenv("HF_API_KEY")
-        headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-        API_URL = f"https://datasets-server.huggingface.co/splits?dataset={args['train_file']}"
-        response = requests.get(API_URL, headers=headers)
-        response.raise_for_status()
-        info = response.json()
-        configs = set([split["config"] for split in info["splits"]])
-        configs = [config for config in configs if config not in exclude_sets]
+        # HF_API_KEY = os.getenv("HF_API_KEY")
+        # headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+        # API_URL = f"https://datasets-server.huggingface.co/splits?dataset={args['train_file']}"
+        # response = requests.get(API_URL, headers=headers)
+        # response.raise_for_status()
+        # info = response.json()
+        # configs = set([split["config"] for split in info["splits"]])
+        # configs = [config for config in configs if config not in exclude_sets]
 
-        max_per_task = args["max_per_task"]
-        max_test_per_task = args["max_test_per_task"]
+        # max_per_task = args["max_per_task"]
+        # max_test_per_task = args["max_test_per_task"]
 
-        train_datasets = []
-        val_datasets = []
-        val_small_datasets = []
-        val_tiny_datasets = []
-        select_columns = ["inputs", "targets", "multiple_choice_targets"]
-        for config in tqdm(configs):
-            dataset = load_dataset(args["train_file"], config)
-            dataset = dataset.select_columns(select_columns)
+        # train_datasets = []
+        # val_datasets = []
+        # val_small_datasets = []
+        # val_tiny_datasets = []
+        # select_columns = ["inputs", "targets", "multiple_choice_targets"]
+        # for config in tqdm(configs):
+        #     dataset = load_dataset(args["train_file"], config)
+        #     dataset = dataset.select_columns(select_columns)
 
-            dataset["train"] = dataset["train"].add_column(
-                "task", [config] * len(dataset["train"])
-            )
-            dataset["validation"] = dataset["validation"].add_column(
-                "task", [config] * len(dataset["validation"])
-            )
-            if config in extra_transforms:
-                dataset = dataset.map(extra_transforms[config])
-            extra_instructions_for_task = extra_instructions.get(config, "")
-            dataset["train"] = dataset["train"].add_column(
-                "extra_instruction",
-                [extra_instructions_for_task] * len(dataset["train"]),
-            )
-            dataset["validation"] = dataset["validation"].add_column(
-                "extra_instruction",
-                [extra_instructions_for_task] * len(dataset["validation"]),
-            )
-            train_datasets.append(
-                dataset["train"].select(range(min(max_per_task, len(dataset["train"]))))
-            )
-            val_datasets.append(
-                dataset["validation"].select(
-                    range(min(max_test_per_task, len(dataset["validation"])))
-                )
-            )
-            val_small_datasets.append(
-                dataset["validation"].select(range(min(10, len(dataset["validation"]))))
-            )
-            val_tiny_datasets.append(
-                dataset["validation"].select(range(min(2, len(dataset["validation"]))))
-            )
+        #     dataset["train"] = dataset["train"].add_column(
+        #         "task", [config] * len(dataset["train"])
+        #     )
+        #     dataset["validation"] = dataset["validation"].add_column(
+        #         "task", [config] * len(dataset["validation"])
+        #     )
+        #     if config in extra_transforms:
+        #         dataset = dataset.map(extra_transforms[config])
+        #     extra_instructions_for_task = extra_instructions.get(config, "")
+        #     dataset["train"] = dataset["train"].add_column(
+        #         "extra_instruction",
+        #         [extra_instructions_for_task] * len(dataset["train"]),
+        #     )
+        #     dataset["validation"] = dataset["validation"].add_column(
+        #         "extra_instruction",
+        #         [extra_instructions_for_task] * len(dataset["validation"]),
+        #     )
+        #     train_datasets.append(
+        #         dataset["train"].select(range(min(max_per_task, len(dataset["train"]))))
+        #     )
+        #     val_datasets.append(
+        #         dataset["validation"].select(
+        #             range(min(max_test_per_task, len(dataset["validation"])))
+        #         )
+        #     )
+        #     val_small_datasets.append(
+        #         dataset["validation"].select(range(min(10, len(dataset["validation"]))))
+        #     )
+        #     val_tiny_datasets.append(
+        #         dataset["validation"].select(range(min(2, len(dataset["validation"]))))
+        #     )
 
-        raw_dataset = DatasetDict(
-            {
-                "train": concatenate_datasets(train_datasets),
-                "test_all": concatenate_datasets(val_datasets),
-                "test_small": concatenate_datasets(val_small_datasets),
-                "test_tiny": concatenate_datasets(val_tiny_datasets),
-            }
-        )
+        # raw_dataset = DatasetDict(
+        #     {
+        #         "train": concatenate_datasets(train_datasets),
+        #         "test_all": concatenate_datasets(val_datasets),
+        #         "test_small": concatenate_datasets(val_small_datasets),
+        #         "test_tiny": concatenate_datasets(val_tiny_datasets),
+        #     }
+        # )
+
+        raw_dataset = load_dataset("jeggers/bigbench")
         accelerator.print("Raw data:", raw_dataset)
 
         # make cot related info
