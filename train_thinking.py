@@ -606,17 +606,6 @@ def rollout(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
     programs = [text.split(cot_trigger)[-1] for text in completed_texts]
-    if tasks is None:
-        tasks = ["" for _ in programs]
-    thinkings = [
-        (program.split(answer_trigger)[0], task)
-        for program, task in zip(programs, tasks)
-    ]
-
-    # calculate length of thinking with tokenization
-    for thinking, task in thinkings:
-        token_count = len(tokenizer(thinking, add_special_tokens=False)["input_ids"])
-        wandb.log({f"cot_length/{task}": token_count})
 
     execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
     correctness = []
@@ -729,6 +718,7 @@ def rollout(
         old_logprob,
         ref_logprob,
         adv,
+        programs,
     )
 
 
@@ -782,6 +772,7 @@ def train_one_epoch(
                 old_logprob,
                 _,
                 adv,
+                programs,
             ) = rollout(
                 args,
                 model,
@@ -809,6 +800,20 @@ def train_one_epoch(
             mini_batch_size_per_gpu = args["mini_batch_size"]
             ppo_epochs = args["ppo_epochs"]
             train_stats = {}
+            if accelerator.is_main_process and args["wandb_log"]:
+                thinkings = [
+                    (program.split(answer_trigger)[0], task)
+                    for program, task in zip(
+                        programs, batch["ppo_forward_kwargs"]["tasks"]
+                    )
+                ]
+
+                # calculate length of thinking with tokenization
+                for thinking, task in thinkings:
+                    token_count = len(
+                        tokenizer(thinking, add_special_tokens=False)["input_ids"]
+                    )
+                    wandb.log({f"cot_length/{task}": token_count})
             for _ in range(ppo_epochs):
                 perms = torch.randperm(batch_size_per_gpu)
                 for mini_idx in range(0, len(perms), mini_batch_size_per_gpu):
