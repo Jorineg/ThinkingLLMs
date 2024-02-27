@@ -264,6 +264,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         configs = [config for config in configs if config not in exclude_sets]
 
         max_per_task = args["max_per_task"]
+        max_test_per_task = args["max_test_per_task"]
 
         train_datasets = []
         val_datasets = []
@@ -294,7 +295,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             train_datasets.append(
                 dataset["train"].select(range(min(max_per_task, len(dataset["train"]))))
             )
-            val_datasets.append(dataset["validation"])
+            val_datasets.append(dataset["validation"].select(range(min(max_test_per_task, len(dataset["validation"])))))
             val_small_datasets.append(
                 dataset["validation"].select(range(min(10, len(dataset["validation"]))))
             )
@@ -1490,6 +1491,7 @@ if __name__ == "__main__":
         adv_whitening: str = field(default="global")
         ### new!
         max_per_task: int = field(default=1000)
+        max_test_per_task: int = field(default=100)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
