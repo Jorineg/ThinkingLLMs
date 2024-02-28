@@ -1110,7 +1110,7 @@ def train_one_epoch(
                     **best_eval_log_dict,
                 }
                 if accelerator.is_main_process and args["wandb_log"]:
-                    wandb.log(log_dict, step=global_step)
+                    wandb.log(log_dict, step=global_iter_num)
                     log_dict = {
                         "wandb": args["wandb_project"] + "|" + args["wandb_run_name"],
                         **log_dict,
