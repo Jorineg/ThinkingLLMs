@@ -316,7 +316,10 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         #     }
         # )
 
-        raw_dataset = load_dataset("jeggers/bigbench")
+        # raw_dataset.push_to_hub("jeggers/bigbench_small")
+        # raise ValueError("Pushed to hub")
+
+        raw_dataset = load_dataset("jeggers/bigbench_small")
         accelerator.print("Raw data:", raw_dataset)
 
         # make cot related info
@@ -360,14 +363,14 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
                 question = inputs.strip()
 
-                task = "Task name: " + task + "\n\n"
+                task_str = "Task name: " + task + "\n\n"
                 mc_options = (
                     "Multiple choice options: " + str(multiple_choice_targets) + "\n\n"
                 )
 
-                # input = f"{instruction}{task}{extra_instruction}{question}{mc_options}{cot_trigger}"
+                # input = f"{instruction}{task_str}{extra_instruction}{question}{mc_options}{cot_trigger}"
                 # output = f"{answer_cot}"
-                prefix_text = f"{instruction}{task}{extra_instruction}{question}{mc_options}{cot_trigger}"
+                prefix_text = f"{instruction}{task_str}{extra_instruction}{question}{mc_options}{cot_trigger}"
 
                 # Modify for particular datasets and engine
                 if (
@@ -595,7 +598,7 @@ def rollout(
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
-            max_length=args["max_gen_length"] + args["max_input_length"],
+            # max_length=args["max_gen_length"] + args["max_input_length"],
             max_new_tokens=args["max_gen_length"],
         )
         completed_tensors = gen_output
@@ -614,21 +617,6 @@ def rollout(
     for i, extracted_ans in enumerate(execute_fn(programs)):
         target_value = answer_values[i]
         mc_targets = multiple_choice_targets[i]
-        # target_value = post_process_final_answer_fn_mapper[src_name](answer_values[i])
-        # if extracted_ans is not None:
-        # if args["engine"] == "game24" or args["engine"] == "calcn":
-        #     is_correct = extracted_ans
-        # else:
-        #     if compare_answer_fn_mapper[src_name](extracted_ans, target_value):
-        #         is_correct = 1
-        #     else:
-        #         is_correct = 0.1
-        # else:
-        #     is_correct = 0
-        # if compare_answer_fn_mapper[src_name](extracted_ans, target_value):
-        #     is_correct = 1
-        # else:
-        #     is_correct = 0
         reward = compare_and_calculate_reward(extracted_ans, target_value, mc_targets)
         correctness.append(reward)
 
@@ -811,11 +799,18 @@ def train_one_epoch(
                 ]
 
                 # calculate length of thinking with tokenization
+                data = []
                 for thinking, task in thinkings:
-                    token_count = len(
-                        tokenizer(thinking, add_special_tokens=False)["input_ids"]
-                    )
-                    wandb.log({f"cot_length/{task}": token_count})
+                    tokens = tokenizer(thinking, add_special_tokens=False)["input_ids"]
+                    token_count = len(tokens)
+                    wandb.log({f"cot_length/{task}": token_count}, step=global_step)
+                    data.append([task, thinking, token_count])
+                # sort by length of thinking, descending
+                data = sorted(data, key=lambda x: x[2], reverse=True)
+                columns = ["task", "cot", "length"]
+                table = wandb.Table(data=data, columns=columns)
+                wandb.log({"thinking": table}, step=global_step)
+
             for _ in range(ppo_epochs):
                 perms = torch.randperm(batch_size_per_gpu)
                 for mini_idx in range(0, len(perms), mini_batch_size_per_gpu):
@@ -1180,15 +1175,14 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             generated_ids, dim=1, pad_index=tokenizer.pad_token_id, pad_first=True
         )
 
-        labels = batch["generate_prefix_kwargs"]["labels"]
-        labels = pad_across_processes(
-            labels, dim=1, pad_index=tokenizer.pad_token_id, pad_first=True
-        )
-        labels[labels == -100] = tokenizer.pad_token_id
+        # labels = batch["generate_prefix_kwargs"]["labels"]
+        # labels = pad_across_processes(
+        #     labels, dim=1, pad_index=tokenizer.pad_token_id, pad_first=True
+        # )
+        # labels[labels == -100] = tokenizer.pad_token_id
 
-        generated_ids, labels = accelerator.gather(generated_ids), accelerator.gather(
-            labels
-        )
+        generated_ids = accelerator.gather(generated_ids)
+        # labels = accelerator.gather(labels)
 
         preds = [
             tokenizer.decode(
@@ -1199,56 +1193,77 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             for g in generated_ids
         ]
         predictions.extend(preds)
-        target = [
-            tokenizer.decode(
-                t.cpu().numpy().tolist(),
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True,
-            ).strip()
-            for t in labels
-        ]
+        # target = [
+        #     tokenizer.decode(
+        #         t.cpu().numpy().tolist(),
+        #         skip_special_tokens=True,
+        #         clean_up_tokenization_spaces=True,
+        #     ).strip()
+        #     for t in labels
+        # ]
+        target = [item["answer_value"] for item in batch["ppo_forward_kwargs"]]
         targets.extend(target)
 
     predictions = predictions[: len(dataset)]
     targets = targets[: len(dataset)]
 
     if accelerator.is_main_process and accelerator.is_local_main_process:
-        results = []
-        src_name = dataset[0]["item_id"].split("_")[0]
-        for pred, tar, item in zip(predictions, targets, dataset):
-            cur_res = {
-                "item_id": item["item_id"],
-                "answer_value": item["answer_value"],
-            }
-            ## Processing target
-            target_cot = tar.strip().split(cot_trigger)[-1].strip()
-            target_value = post_process_final_answer_fn_mapper[src_name](
-                cur_res["answer_value"]
-            )
-            cur_res["target"] = target
-            cur_res["target_cot"] = target_cot
-            cur_res["target_value"] = target_value
-            ## Processing prediction
-            prediction_cot = pred.strip().split(cot_trigger)[-1].strip()
-            cur_res["prediction"] = pred
-            cur_res["prediction_cot"] = prediction_cot
-            cur_res["prediction_value"] = None  # Tobe filled
-            results.append(cur_res)
+        # results = []
+        # src_name = dataset[0]["item_id"].split("_")[0]
+        src_name = "bigbench"
+        # for pred, tar, item in zip(predictions, targets, dataset):
+        #     cur_res = {
+        #         "item_id": item["item_id"],
+        #         "answer_value": item["answer_value"],
+        #     }
+        #     ## Processing target
+        #     target_cot = tar.strip().split(cot_trigger)[-1].strip()
+        #     target_value = post_process_final_answer_fn_mapper[src_name](
+        #         cur_res["answer_value"]
+        #     )
+        #     cur_res["target"] = target
+        #     cur_res["target_cot"] = target_cot
+        #     cur_res["target_value"] = target_value
+        #     ## Processing prediction
+        #     prediction_cot = pred.strip().split(cot_trigger)[-1].strip()
+        #     cur_res["prediction"] = pred
+        #     cur_res["prediction_cot"] = prediction_cot
+        #     cur_res["prediction_value"] = None  # Tobe filled
+        #     results.append(cur_res)
 
+        # execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
+        # corr_value = 0
+        # for i, prediction_value in enumerate(
+        #     execute_fn([item["prediction_cot"] for item in results])
+        # ):
+        #     target_value = results[i]["target_value"]
+        #     is_correct = (
+        #         compare_answer_fn_mapper[src_name](prediction_value, target_value)
+        #         if prediction_value is not None
+        #         else False
+        #     )
+        #     results[i]["prediction_value"] = prediction_value
+        #     results[i]["is_correct"] = is_correct
+        #     corr_value += is_correct
+
+        pred_cots = [pred.split(cot_trigger)[-1].strip() for pred in predictions]
         execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
+        results = []
         corr_value = 0
-        for i, prediction_value in enumerate(
-            execute_fn([item["prediction_cot"] for item in results])
-        ):
-            target_value = results[i]["target_value"]
-            is_correct = (
-                compare_answer_fn_mapper[src_name](prediction_value, target_value)
-                if prediction_value is not None
+        for pred_cot, target in zip(pred_cots, targets):
+            cur_res = {
+                "prediction_cot": pred_cot,
+                "prediction_value": execute_fn(pred_cot),
+                "target": target,
+            }
+            results.append(cur_res)
+            corr_value += (
+                compare_answer_fn_mapper[src_name](
+                    cur_res["prediction_value"], cur_res["target"]
+                )
+                if cur_res["prediction_value"] is not None
                 else False
             )
-            results[i]["prediction_value"] = prediction_value
-            results[i]["is_correct"] = is_correct
-            corr_value += is_correct
 
         res_path = args["model_dir"].rstrip("/") + "/" + "_res.json"
         with open(res_path, "w") as f:

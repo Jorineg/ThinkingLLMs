@@ -11,7 +11,7 @@ model_name_or_path="facebook/galactica-125m"
 tokenizer_name_or_path="facebook/galactica-125m"
 ref_model_name_or_path="facebook/galactica-125m"
 
-max_per_task=1000
+max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'
 batch_size="32"
