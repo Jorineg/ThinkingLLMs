@@ -803,13 +803,13 @@ def train_one_epoch(
                 for thinking, task in thinkings:
                     tokens = tokenizer(thinking, add_special_tokens=False)["input_ids"]
                     token_count = len(tokens)
-                    wandb.log({f"cot_length/{task}": token_count}, step=global_step)
+                    wandb.log({f"cot_length/{task}": token_count}, step=global_iter_num)
                     data.append([task, thinking, token_count])
                 # sort by length of thinking, descending
                 data = sorted(data, key=lambda x: x[2], reverse=True)
                 columns = ["task", "cot", "length"]
                 table = wandb.Table(data=data, columns=columns)
-                wandb.log({"thinking": table}, step=global_step)
+                wandb.log({"thinking": table}, step=global_iter_num)
 
             for _ in range(ppo_epochs):
                 perms = torch.randperm(batch_size_per_gpu)
