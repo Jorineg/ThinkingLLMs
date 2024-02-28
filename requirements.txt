@@ -2,7 +2,7 @@ torch==2.2.1
 torchvision==0.17.1
 torchaudio==2.2.1
 wandb
-transformers==4.34.1
+git+https://github.com/huggingface/transformers
 accelerate==0.23.0
 datasets==2.14.6
 deepspeed==0.11.1
