@@ -42,7 +42,7 @@ wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
 
-num_processes='1'
+num_processes='2'
 main_process_port='8889'
 
 mkdir -p "${model_dir}"
