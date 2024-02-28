@@ -1201,7 +1201,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         #     ).strip()
         #     for t in labels
         # ]
-        target = batch["ppo_forward_kwargs"]["answer_value"]
+        target = batch["ppo_forward_kwargs"]["answer_values"]
         targets.extend(target)
 
     predictions = predictions[: len(dataset)]
