@@ -155,7 +155,7 @@ def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
         reward = int(extracted_ans in target_answer)
         if reward == 0:
             for ans in target_answer:
-                if extracted_ans.strartswith(ans):
+                if extracted_ans.startswith(ans):
                     reward = 0.5
                     break
     else:
