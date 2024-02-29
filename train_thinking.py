@@ -605,6 +605,7 @@ def rollout(
     src_name,
     multiple_choice_targets=None,
     tasks=None,
+    iter=None,
 ):
     model.eval()
     with torch.no_grad():
@@ -682,6 +683,7 @@ def rollout(
         kl_rew[:, :-1] = -kl  # NOTE the minus sign
 
         kl_coef = args["kl_coef"]
+        kl_coef += np.min(0.3, 1 / (iter**0.7))
         rew = score_rew + kl_coef * kl_rew
 
     # Process val ret adv logprob
@@ -797,6 +799,7 @@ def train_one_epoch(
                     "multiple_choice_targets"
                 ],
                 tasks=batch["ppo_forward_kwargs"]["tasks"],
+                iter=global_iter_num,
             )
             model.train()
             # preprocess
