@@ -163,7 +163,7 @@ def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
     ):
         reward = 0.1
 
-    if reward == 0 and len(cot.split(answer_trigger)) > 0:
+    if reward == 0 and len(cot.split(answer_trigger)) > 1:
         reward = 0.01
 
     return reward
