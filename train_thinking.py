@@ -1253,7 +1253,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         #     ).strip()
         #     for t in labels
         # ]
-        target = batch["ppo_forward_kwargs"]["answer_values"]
+        target = accelerator.gather(batch["ppo_forward_kwargs"]["answer_values"])
         targets.extend(target)
 
     predictions = predictions[: len(dataset)]
@@ -1305,7 +1305,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         for pred_cot, target in zip(pred_cots, targets):
             cur_res = {
                 "prediction_cot": pred_cot,
-                "prediction_value": execute_fn(pred_cot),
+                "prediction_value": execute_fn([pred_cot])[0],
                 "target": target,
             }
             results.append(cur_res)
