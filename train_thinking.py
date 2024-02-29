@@ -81,13 +81,18 @@ def setup_cot(src_name):
     If there are given options, answer with the best choice.
     You can think about the question before you answer.
     Use at most {args["max_gen_length"]} words for your thinking+answer. 
-    To indicate your answer, write "{answer_trigger}" before your answer.\n
-    Example:
+    To indicate your answer, write "{answer_trigger}" before your answer.
+
+    Example 1:
     What is 1 + 1?
     ["1", "2", "3", "4"]
     {cot_trigger}
-    this is easy. 1 + 1 is 2
-    {answer_trigger}2    
+    this is easy. 1 + 1 is 2{answer_trigger}2
+
+    Example 2:
+    What is the capital of France?
+    []
+    {cot_trigger}{answer_trigger}Paris\n\n
     """
     extra_instruction_announce = (
         "Here is an extra instruction, specifically for this task: "
@@ -372,7 +377,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
                 # input = f"{instruction}{task_str}{extra_instruction}{question}{mc_options}{cot_trigger}"
                 # output = f"{answer_cot}"
-                prefix_text = f"{instruction}{task_str}{extra_instruction}{question}{mc_options}{cot_trigger}"
+                prefix_text = f"{instruction}{task_str}{extra_instruction}Question:\n{question}{mc_options}{cot_trigger}"
 
                 # Modify for particular datasets and engine
                 if (
