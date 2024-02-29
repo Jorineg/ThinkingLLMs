@@ -937,6 +937,12 @@ def train_one_epoch(
                     # total loss
                     if global_iter_num < args["no_policy_loss_steps"]:
                         loss += pg_loss + 10 * vf_loss
+                    elif global_iter_num < 2 * args["no_policy_loss_steps"]:
+                        loss += pg_loss + 5 * vf_loss
+                    elif global_iter_num < 3 * args["no_policy_loss_steps"]:
+                        loss += pg_loss + 2 * vf_loss
+                    elif global_iter_num < 4 * args["no_policy_loss_steps"]:
+                        loss += pg_loss + vf_loss
                     #     loss += vf_coef * vf_loss
                     # elif (
                     #     global_iter_num >= args["no_policy_loss_steps"]
