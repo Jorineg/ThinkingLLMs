@@ -815,21 +815,27 @@ def train_one_epoch(
                         program.split(answer_trigger)[0],
                         task,
                         program.split(answer_trigger)[-1],
+                        program,
+                        correct,
+                        score,
                     )
-                    for program, task in zip(
-                        programs, batch["ppo_forward_kwargs"]["tasks"]
+                    for program, task, correct, score in zip(
+                        programs,
+                        batch["ppo_forward_kwargs"]["tasks"],
+                        batch["ppo_forward_kwargs"]["answer_values"],
+                        correctness,
                     )
                 ]
                 # calculate length of thinking with tokenization
                 data = []
-                for thinking, task, ans in thinkings:
+                for thinking, task, ans, correct_ans, score in thinkings:
                     tokens = tokenizer(thinking, add_special_tokens=False)["input_ids"]
                     token_count = len(tokens)
                     wandb.log({f"cot_length/{task}": token_count}, step=global_iter_num)
-                    data.append([task, thinking, token_count, ans])
+                    data.append([task, thinking, token_count, ans, correct_ans, score])
                 # sort by length of thinking, descending
                 data = sorted(data, key=lambda x: x[2], reverse=True)
-                columns = ["task", "cot", "length", "answer"]
+                columns = ["task", "cot", "length", "answer", "correct answer", "score"]
                 table = wandb.Table(data=data, columns=columns)
                 wandb.log({"thinking": table}, step=global_iter_num)
 
