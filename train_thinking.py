@@ -936,8 +936,9 @@ def train_one_epoch(
 
                     # total loss
                     if global_iter_num < args["no_policy_loss_steps"]:
-                        pg_loss = np.zeros_like(pg_loss)
-                    loss += pg_loss + vf_coef * vf_loss
+                        loss += vf_coef * vf_loss
+                    else:
+                        loss += pg_loss + vf_coef * vf_loss
 
                     # token related metrics
                     mean_query_len = torch.mean(
