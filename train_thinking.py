@@ -73,7 +73,7 @@ def setup_cot(src_name):
     global answer_trigger
     global extra_instruction_announce
     # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
-    answer_trigger = "ANSWER: "
+    answer_trigger = "ANSWER:"
     cot_trigger = f"BOT:"
     instruction = f"""
     You will be given the name of the task set,
@@ -95,7 +95,7 @@ def setup_cot(src_name):
     {cot_trigger}{answer_trigger}Paris\n\n
     """
     extra_instruction_announce = (
-        "Here is an extra instruction, specifically for this task: "
+        "Here is an extra instruction, specifically for this task:\n"
     )
     return
 
@@ -799,22 +799,25 @@ def train_one_epoch(
             train_stats = {}
             if accelerator.is_main_process and args["wandb_log"]:
                 thinkings = [
-                    (program.split(answer_trigger)[0], task)
+                    (
+                        program.split(answer_trigger)[0],
+                        task,
+                        program.split(answer_trigger)[-1],
+                    )
                     for program, task in zip(
                         programs, batch["ppo_forward_kwargs"]["tasks"]
                     )
                 ]
-
                 # calculate length of thinking with tokenization
                 data = []
-                for thinking, task in thinkings:
+                for thinking, task, ans in thinkings:
                     tokens = tokenizer(thinking, add_special_tokens=False)["input_ids"]
                     token_count = len(tokens)
                     wandb.log({f"cot_length/{task}": token_count}, step=global_iter_num)
-                    data.append([task, thinking, token_count])
+                    data.append([task, thinking, token_count, ans])
                 # sort by length of thinking, descending
                 data = sorted(data, key=lambda x: x[2], reverse=True)
-                columns = ["task", "cot", "length"]
+                columns = ["task", "cot", "length", "answer"]
                 table = wandb.Table(data=data, columns=columns)
                 wandb.log({"thinking": table}, step=global_iter_num)
 
