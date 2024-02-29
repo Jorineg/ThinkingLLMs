@@ -42,8 +42,9 @@ wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
 
-num_processes='2'
+num_processes='4'
 main_process_port='8889'
+no_policy_loss_steps=100
 
 mkdir -p "${model_dir}"
 accelerate launch \
@@ -86,5 +87,6 @@ accelerate launch \
             --adv_whitening "${adv_whitening}" \
             --keep_num_ckpt "${keep_num_ckpt}" \
             --max_per_task "${max_per_task}" \
+            --no_policy_loss_steps "${no_policy_loss_steps}" \
             1> >(tee "${model_dir}"/"${exp_name}".log) \
             2> >(tee "${model_dir}"/"${exp_name}".err >&2)
