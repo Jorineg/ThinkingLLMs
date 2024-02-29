@@ -14,9 +14,9 @@ ref_model_name_or_path="facebook/galactica-125m"
 max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'
-batch_size="115"
-mini_batch_size="115"
-eval_batch_size="115"
+batch_size="128"
+mini_batch_size="128"
+eval_batch_size="128"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
@@ -36,15 +36,15 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="500"
-max_gen_length="500"
+max_input_length="280"
+max_gen_length="70"
 wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
 
 num_processes='4'
 main_process_port='8889'
-no_policy_loss_steps=100
+no_policy_loss_steps=30
 
 mkdir -p "${model_dir}"
 accelerate launch \
