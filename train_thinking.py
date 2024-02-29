@@ -148,8 +148,9 @@ def check_bigbench_answer(extracted_ans, target_answer):
         return extracted_ans == target_answer
 
 
-def compare_and_calculate_reward(extracted_ans, target_answer, multiple_choice_targets):
+def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
     reward = 0
+    extracted_ans = cot.split(answer_trigger)[-1]
     if isinstance(target_answer, list):
         reward = int(extracted_ans in target_answer)
     else:
@@ -161,6 +162,9 @@ def compare_and_calculate_reward(extracted_ans, target_answer, multiple_choice_t
         and extracted_ans in multiple_choice_targets
     ):
         reward = 0.1
+
+    if reward == 0 and len(cot.split(answer_trigger)) > 0:
+        reward = 0.01
 
     return reward
 
@@ -619,12 +623,13 @@ def rollout(
     )
     programs = [text.split(cot_trigger)[-1] for text in completed_texts]
 
-    execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
+    # execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
     correctness = []
-    for i, extracted_ans in enumerate(execute_fn(programs)):
+    # for i, extracted_ans in enumerate(execute_fn(programs)):
+    for i, cot in enumerate(programs):
         target_value = answer_values[i]
         mc_targets = multiple_choice_targets[i]
-        reward = compare_and_calculate_reward(extracted_ans, target_value, mc_targets)
+        reward = compare_and_calculate_reward(cot, target_value, mc_targets)
         correctness.append(reward)
 
     model_input_ids = completed_tensors
