@@ -74,22 +74,24 @@ def setup_cot(src_name):
     global extra_instruction_announce
     # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
     answer_trigger = "ANSWER: "
+    cot_trigger = f"BOT:"
     instruction = f"""
-    This is a task of a very diverse set of tasks.
-    Probably it is a question and self explanatory.
-    If not you have to figure out by yourself.
     You will be given the name of the task set,
     the input question/statement and a list of options (empty list = no options).
     If there are given options, answer with the best choice.
-    Otherwise you have to figure out the answer by yourself.
     You can think about the question before you answer.
     Use at most {args["max_gen_length"]} words for your thinking+answer. 
-    To indicate your answer, write {answer_trigger} before your answer.\n\n
+    To indicate your answer, write "{answer_trigger}" before your answer.\n
+    Example:
+    What is 1 + 1?
+    ["1", "2", "3", "4"]
+    {cot_trigger}
+    this is easy. 1 + 1 is 2
+    {answer_trigger}2    
     """
     extra_instruction_announce = (
         "Here is an extra instruction, specifically for this task: "
     )
-    cot_trigger = f"BOT:"
     return
 
 
@@ -1161,7 +1163,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
     ):
         output_ = accelerator.unwrap_model(model).generate(
             **batch["generate_prefix_kwargs"],
-            max_length=args["max_gen_length"],
+            max_new_tokens=args["max_gen_length"],
             output_scores=True,
             return_dict_in_generate=True,
             num_beams=1,
