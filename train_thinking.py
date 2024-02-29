@@ -683,7 +683,7 @@ def rollout(
         kl_rew[:, :-1] = -kl  # NOTE the minus sign
 
         kl_coef = args["kl_coef"]
-        kl_coef += np.min(0.3, 1.0 / (np.max(1.0, float(iter)) ** 0.7))
+        kl_coef += np.min([0.3, 1 / (np.max([1, iter]) ** 0.7)])
         rew = score_rew + kl_coef * kl_rew
 
     # Process val ret adv logprob
