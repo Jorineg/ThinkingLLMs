@@ -153,8 +153,15 @@ def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
     extracted_ans = cot.split(answer_trigger)[-1]
     if isinstance(target_answer, list):
         reward = int(extracted_ans in target_answer)
+        if reward == 0:
+            for ans in target_answer:
+                if extracted_ans.strartswith(ans):
+                    reward = 0.5
+                    break
     else:
         reward = int(extracted_ans == target_answer)
+        if reward == 0 and extracted_ans.startswith(target_answer):
+            reward = 0.5
 
     if (
         multiple_choice_targets is not None
