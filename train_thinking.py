@@ -935,6 +935,8 @@ def train_one_epoch(
                     # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
 
                     # total loss
+                    if global_iter_num < args["no_policy_loss_steps"]:
+                        pg_loss = np.zeros_like(pg_loss)
                     loss += pg_loss + vf_coef * vf_loss
 
                     # token related metrics
@@ -1559,6 +1561,7 @@ if __name__ == "__main__":
         ### new!
         max_per_task: int = field(default=1000)
         max_test_per_task: int = field(default=100)
+        no_policy_loss_steps: int = field(default=0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()

@@ -36,14 +36,15 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="500"
-max_gen_length="500"
+max_input_length="280"
+max_gen_length="50"
 wandb_log="True"
 wandb_project="thinking_llms"
 wandb_run_name="${exp_name}"
 
-num_processes='1'
+num_processes='4'
 main_process_port='8889'
+no_policy_loss_steps=100
 
 mkdir -p "${model_dir}"
 accelerate launch \
@@ -86,5 +87,6 @@ accelerate launch \
             --adv_whitening "${adv_whitening}" \
             --keep_num_ckpt "${keep_num_ckpt}" \
             --max_per_task "${max_per_task}" \
+            --no_policy_loss_steps "${no_policy_loss_steps}" \
             1> >(tee "${model_dir}"/"${exp_name}".log) \
             2> >(tee "${model_dir}"/"${exp_name}".err >&2)
