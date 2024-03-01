@@ -1242,6 +1242,17 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         gathered = accelerator.gather_for_metrics(
             [generated_ids, batch["ppo_forward_kwargs"]["answer_values"]]
         )
+        try:
+            accelerator.print(gathered.shape)
+        except:
+            pass
+        try:
+            accelerator.print(gathered[0])
+            accelerator.print(gathered[0].shape)
+        except:
+            pass
+        # accelerator.print(gathered[0])
+        accelerator.print(gathered)
         generated_ids, target = list(zip(*gathered))
         # labels = accelerator.gather(labels)
 
