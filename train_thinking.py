@@ -1239,9 +1239,10 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         # labels[labels == -100] = tokenizer.pad_token_id
 
         # generated_ids = accelerator.gather(generated_ids)
-        generated_ids, target = accelerator.gather_for_metrics(
+        gathered = accelerator.gather_for_metrics(
             [generated_ids, batch["ppo_forward_kwargs"]["answer_values"]]
         )
+        generated_ids, target = list(zip(*gathered))
         # labels = accelerator.gather(labels)
 
         preds = [
