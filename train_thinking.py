@@ -1238,7 +1238,10 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         # )
         # labels[labels == -100] = tokenizer.pad_token_id
 
-        generated_ids = accelerator.gather(generated_ids)
+        # generated_ids = accelerator.gather(generated_ids)
+        generated_ids, target = accelerator.gather_for_metrics(
+            [generated_ids, batch["ppo_forward_kwargs"]["answer_values"]]
+        )
         # labels = accelerator.gather(labels)
 
         preds = [
@@ -1250,6 +1253,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             for g in generated_ids
         ]
         predictions.extend(preds)
+        targets.extend(target)
         # target = [
         #     tokenizer.decode(
         #         t.cpu().numpy().tolist(),
@@ -1258,11 +1262,10 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         #     ).strip()
         #     for t in labels
         # ]
-        target = batch["ppo_forward_kwargs"]["answer_values"]
-        targets.extend(target)
+        # target = batch["ppo_forward_kwargs"]["answer_values"]
 
-    predictions = predictions[: len(dataset)]
-    targets = targets[: len(dataset)]
+    # predictions = predictions[: len(dataset)]
+    # targets = targets[: len(dataset)]
 
     if accelerator.is_main_process and accelerator.is_local_main_process:
         # results = []
