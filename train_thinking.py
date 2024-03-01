@@ -1245,7 +1245,8 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         generated_ids, target = [], []
 
         if accelerator.is_main_process:
-            generated_ids, target = gathered[::2], gathered[1::2]
+            generated_ids = [item for sublist in gathered[::2] for item in sublist]
+            target = [item for sublist in gathered[1::2] for item in sublist]
         # labels = accelerator.gather(labels)
 
         preds = [
