@@ -1242,10 +1242,10 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         gathered = accelerator.gather_for_metrics(
             [generated_ids, batch["ppo_forward_kwargs"]["answer_values"]]
         )
-        generated_ids, targets = [], []
+        generated_ids, target = [], []
 
         if accelerator.is_main_process:
-            generated_ids, targets = gathered[::2], gathered[1::2]
+            generated_ids, target = gathered[::2], gathered[1::2]
         # labels = accelerator.gather(labels)
 
         preds = [
