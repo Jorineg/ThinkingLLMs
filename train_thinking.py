@@ -1239,12 +1239,13 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         # labels[labels == -100] = tokenizer.pad_token_id
 
         # generated_ids = accelerator.gather(generated_ids)
-        gathered = np.array(
-            accelerator.gather_for_metrics(
-                [generated_ids, batch["ppo_forward_kwargs"]["answer_values"]]
-            )
-        ).reshape(-1, 2)
-        generated_ids, target = gathered[:, 0], gathered[:, 1]
+        gathered = accelerator.gather_for_metrics(
+            [generated_ids, batch["ppo_forward_kwargs"]["answer_values"]]
+        )
+        generated_ids, targets = [], []
+
+        if accelerator.is_main_process:
+            generated_ids, targets = gathered[::2], gathered[1::2]
         # labels = accelerator.gather(labels)
 
         preds = [
