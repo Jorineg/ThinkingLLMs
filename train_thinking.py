@@ -424,7 +424,8 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     for i in range(len(rew)):
         cur_rew, cur_val = rew[i], val[i]
         cur_delta = -cur_val[:-1] + cur_rew[:-1] + gamma * cur_val[1:]
-        cur_adv = discount_cumsum(cur_delta, discount=gamma * lam)
+        cur_adv = discount_cumsum(cur_delta.cpu().numpy(), discount=gamma * lam)
+        cur_adv = torch.tensor(cur_adv, device=completed_tensors.device)
         cur_adv *= output_mask[i][:-1]
         adv[i][:-1] = cur_adv
 
