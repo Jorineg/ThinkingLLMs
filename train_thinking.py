@@ -366,7 +366,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
                 f"reward: {reward}\n"
             )
 
-    score_rew = torch.zeros(completed_tensors.shape)  # (bs, seqlen)
+    score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
     score_rew[:, last_completed_token] = torch.tensor(
