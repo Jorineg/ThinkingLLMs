@@ -341,9 +341,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
         else:
-            accelerator.print(
-                f"item {i}: answer trigger not found in {generated_texts[i]}"
-            )
+            accelerator.print(f"item {i}: answer trigger not found...")
 
         reward = compare_and_calculate_reward(answer, target)
         correctness.append(reward)
