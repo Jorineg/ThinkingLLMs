@@ -524,13 +524,17 @@ def train_one_epoch(
             }
             # # sort by length of thinking, descending
             # data = sorted(data, key=lambda x: len(x[2]), reverse=True)
-            table = wandb.Table(data=list(zip(*data.values())), columns=list(data.keys()))
+            table = wandb.Table(
+                data=list(zip(*data.values())), columns=list(data.keys())
+            )
             wandb.log({"thinking": table}, step=global_iter_num)
+            accelerator.print("logged thinking table")
 
             # create dataframe with columns dataset, cot length and score
             # group by dataset and calculate mean cot length
             # log mean cot length per dataset
             cot_lengths = allgather(cot_lengths)
+            accelerator.print("gathered cot lengths")
             dataset_cot_lengths = defaultdict(list)
             for dataset, cot_len, score in zip(
                 batch["dataset_name"], cot_lengths, correctness
