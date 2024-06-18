@@ -179,10 +179,15 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             )
             encoded = tokenizer(formatted_input)["input_ids"]
             max_len = args["max_input_length"]
-            max_gen_len = args["max_gen_length"]
-            return [max_len - len(toks) >= max_gen_len for toks in encoded]
+            accelerator.print([len(toks) for toks in encoded])
+            result = [len(toks) < max_len for toks in encoded]
+            accelerator.print(result)
+            return result
 
-        dataset = dataset.filter(filter_fn)
+        dataset = dataset.filter(filter_fn, batched=True, batch_size=None)
+
+        # tokenizer padding side:
+        accelerator.print("tokenizer padding side:", tokenizer.padding_side)
 
         accelerator.print("filtered data:", dataset)
 
