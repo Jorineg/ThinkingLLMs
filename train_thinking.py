@@ -502,6 +502,7 @@ def train_one_epoch(
             cot_lengths,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
         accelerator.print("did rollout")
+        torch.distributed.barrier()
         # preprocess
         if args["adv_whitening"] == "global":
             adv = allgather_masked_whiten(adv, mask)  # (mini_bs, seqlen)
@@ -654,6 +655,8 @@ def train_one_epoch(
 
                 # total loss
                 loss += pg_loss + vf_coef * vf_loss
+
+                torch.distributed.barrier()
 
                 accelerator.print("computed losses")
                 # token related metrics
