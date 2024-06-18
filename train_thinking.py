@@ -534,7 +534,7 @@ def train_one_epoch(
             # group by dataset and calculate mean cot length
             # log mean cot length per dataset
             # cot_lengths = allgather(cot_lengths)
-            accelerator.print("gathered cot lengths")
+            # accelerator.print("gathered cot lengths")
             dataset_cot_lengths = defaultdict(list)
             for dataset, cot_len, score in zip(
                 batch["dataset_name"], cot_lengths, correctness
