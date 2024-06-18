@@ -655,11 +655,14 @@ def train_one_epoch(
                 # total loss
                 loss += pg_loss + vf_coef * vf_loss
 
+                accelerator.print("computed losses")
                 # token related metrics
                 mean_query_len = torch.mean(allgather(torch.mean(query_len_per_sample)))
                 std_query_len = torch.mean(allgather(torch.std(query_len_per_sample)))
                 mean_resp_len = torch.mean(allgather(torch.mean(resp_len_per_sample)))
                 std_resp_len = torch.mean(allgather(torch.std(resp_len_per_sample)))
+
+                accelerator.print("gathered metrics")
 
                 # value related metrics
                 # vf_expl_var_num = torch.var(torch.masked_select(cur_ret - vpreds, cur_mask.bool()))
@@ -689,6 +692,8 @@ def train_one_epoch(
                     cur_kl = -cur_kl_rew
                     seq_kl = torch.sum(cur_kl * cur_mask, dim=1)  # (mini_bs,)
                     mean_seq_kl = torch.mean(seq_kl)
+
+                accelerator.print("computed metrics")
 
                 # Update
                 epoch_result_dict["loss"].append(loss.item())
@@ -720,9 +725,12 @@ def train_one_epoch(
                         total_grad_norm = accelerator.clip_grad_norm_(
                             model.parameters(), clip_grad_norm
                         )
+
+                accelerator.print("did backward")
                 optimizer.step()
                 model.zero_grad()
                 optimizer.zero_grad()
+                accelerator.print("did optimizer step")
 
                 # Update running stats
                 n_correct, total = do_gather([sum(correctness), len(correctness)])
