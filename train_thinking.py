@@ -248,6 +248,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             "attention_mask": attention_mask,
             "target": [item["target"] for item in batch],
             "dataset_name": [item["dataset_name"] for item in batch],
+            "penalty": [item["penalty"] for item in batch],
         }
 
         return result
