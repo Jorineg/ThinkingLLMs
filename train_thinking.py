@@ -48,10 +48,11 @@ REWARD_ALLOW_NEGATIVE = True
 IN_COL = "final_input"
 OUT_COL = "final_target"
 
-penalty_trigger = "PENALTY:"
-problem_prefix = "PROBLEM:"
-cot_trigger = "BOT:"
-answer_trigger = "ANSWER:"
+penalty_trigger = "Penalty:"
+problem_prefix = "Problem:"
+# must not be present in the problem text
+cot_trigger = ">> Bot:"
+answer_trigger = "Answer:"
 
 instruction = f"""
 Solve the problem below.
@@ -368,7 +369,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     score_rew = torch.zeros(completed_tensors.shape)  # (bs, seqlen)
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
-    score_rew[:, last_completed_token] = np.array(correctness)
+    score_rew[:, last_completed_token] = torch.tensor(
+        correctness, device=completed_tensors.device, dtype=torch.float32
+    )
 
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
     cot_penalty_rew = torch.zeros(
