@@ -184,11 +184,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
         dataset = dataset.filter(filter_fn, batched=True, batch_size=None)
 
-        # tokenizer padding side:
-        accelerator.print("tokenizer padding side:", tokenizer.padding_side)
-
         accelerator.print("filtered data:", dataset)
-
         accelerator.print("Using instruction:", instruction)
         accelerator.print("Using problem_prefix:", problem_prefix)
         accelerator.print("Using cot_trigger:", cot_trigger)
@@ -249,7 +245,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             "formatted_input": [item["formatted_input"] for item in batch],
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "answer_values": [item["target"] for item in batch],
+            "target": [item["target"] for item in batch],
             "dataset_name": [item["dataset_name"] for item in batch],
         }
 
