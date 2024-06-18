@@ -533,7 +533,7 @@ def train_one_epoch(
             # create dataframe with columns dataset, cot length and score
             # group by dataset and calculate mean cot length
             # log mean cot length per dataset
-            cot_lengths = allgather(cot_lengths)
+            # cot_lengths = allgather(cot_lengths)
             accelerator.print("gathered cot lengths")
             dataset_cot_lengths = defaultdict(list)
             for dataset, cot_len, score in zip(
