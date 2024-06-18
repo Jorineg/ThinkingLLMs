@@ -501,6 +501,7 @@ def train_one_epoch(
             generated_texts,
             cot_lengths,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
+        accelerator.print("did rollout")
         # preprocess
         if args["adv_whitening"] == "global":
             adv = allgather_masked_whiten(adv, mask)  # (mini_bs, seqlen)
@@ -558,6 +559,7 @@ def train_one_epoch(
             )
 
         for _ in range(ppo_epochs):
+            accelerator.print("doing ppo epoch")
             perms = torch.randperm(batch_size_per_gpu)
             for mini_idx in range(0, len(perms), mini_batch_size_per_gpu):
                 b_inds = perms[mini_idx : mini_idx + mini_batch_size_per_gpu]
@@ -591,6 +593,8 @@ def train_one_epoch(
                 # thinking starts after end of query and unil answer_trigger
                 # thinking_len_per_sample = torch.clamp(
 
+                accelerator.print("did make contiguous")
+
                 # Preprocess advantage and get metrics
                 cur_mask = cur_mask.type(cur_adv.dtype).contiguous()
                 mean_adv, var_adv = masked_mean(cur_adv, cur_mask), masked_var(
@@ -605,6 +609,9 @@ def train_one_epoch(
                     input_ids=cur_model_input_ids,
                     attention_mask=cur_model_attention_mask,
                 )
+
+                accelerator.print("did second forward pass")
+
                 logprob = logprobs_from_logits(
                     lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
                 )  # (mini_bs, seqlen-1)
