@@ -542,6 +542,7 @@ def train_one_epoch(
                 dataset_cot_lengths[dataset].append(
                     {"cot_length": cot_len.cpu(), "score": score}
                 )
+            accelerator.print("created dataset cot lengths")
             dataset_metrics = {
                 dataset: {
                     "mean_cot_length": np.mean([x["cot_length"] for x in metrics]),
@@ -549,8 +550,9 @@ def train_one_epoch(
                 }
                 for dataset, metrics in dataset_cot_lengths.items()
             }
+            accelerator.print("calculated dataset metrics")
             wandb.log({"dataset_metrics": dataset_metrics}, step=global_iter_num)
-
+            accelerator.print("logged dataset metrics")
             # log penalty and cot_length
             wandb.log(
                 {
@@ -561,6 +563,7 @@ def train_one_epoch(
                 },
                 step=global_iter_num,
             )
+            accelerator.print("logged penalty and cot length")
 
         for _ in range(ppo_epochs):
             accelerator.print("doing ppo epoch")
