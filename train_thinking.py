@@ -348,7 +348,12 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         reward = compare_and_calculate_reward(answer, target)
         correctness.append(reward)
 
-        if accelerator.is_main_process and args["wandb_log"] and iter and iter == 1:
+        if (
+            accelerator.is_main_process
+            and args["wandb_log"]
+            and iter
+            and iter % 10 == 0
+        ):
             accelerator.print(f"---batch item {i}---")
             accelerator.print(
                 f"prompt length: {input_mask[i].sum().item()}\n"
@@ -365,7 +370,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     score_rew = torch.zeros(completed_tensors.shape)  # (bs, seqlen)
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
-    score_rew[:, last_completed_token] = correctness
+    score_rew[:, last_completed_token] = np.array(correctness)
 
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
     cot_penalty_rew = torch.zeros(
