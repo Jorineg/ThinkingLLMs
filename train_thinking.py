@@ -523,7 +523,7 @@ def train_one_epoch(
             }
             # # sort by length of thinking, descending
             # data = sorted(data, key=lambda x: len(x[2]), reverse=True)
-            table = wandb.Table(data=list(zip(*data.values())), columns=data.keys())
+            table = wandb.Table(data=list(zip(*data.values())), columns=list(data.keys()))
             wandb.log({"thinking": table}, step=global_iter_num)
 
             # create dataframe with columns dataset, cot length and score
