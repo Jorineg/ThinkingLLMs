@@ -521,10 +521,9 @@ def train_one_epoch(
                 "answer score": correctness,
                 "total reward": reward_sums,
             }
-            data = list(zip(*data))
-            # sort by length of thinking, descending
-            data = sorted(data, key=lambda x: len(x[2]), reverse=True)
-            table = wandb.Table(data=data.values(), columns=data.keys())
+            # # sort by length of thinking, descending
+            # data = sorted(data, key=lambda x: len(x[2]), reverse=True)
+            table = wandb.Table(data=list(zip(*data.values())), columns=data.keys())
             wandb.log({"thinking": table}, step=global_iter_num)
 
             # create dataframe with columns dataset, cot length and score
