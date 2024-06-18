@@ -535,7 +535,7 @@ def train_one_epoch(
                 batch["dataset_name"], cot_lengths, correctness
             ):
                 dataset_cot_lengths[dataset].append(
-                    {"cot_length": cot_len, "score": score}
+                    {"cot_length": cot_len.cpu(), "score": score}
                 )
             dataset_metrics = {
                 dataset: {
