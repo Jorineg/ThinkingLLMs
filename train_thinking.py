@@ -179,9 +179,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             )
             encoded = tokenizer(formatted_input)["input_ids"]
             max_len = args["max_input_length"]
-            accelerator.print([len(toks) for toks in encoded])
             result = [len(toks) < max_len for toks in encoded]
-            accelerator.print(result)
             return result
 
         dataset = dataset.filter(filter_fn, batched=True, batch_size=None)
@@ -932,7 +930,7 @@ def main(args):
         wandb.config.update(args)
 
     tokenizer = AutoTokenizer.from_pretrained(
-        args["tokenizer_name_or_path"], use_fast=True
+        args["tokenizer_name_or_path"], use_fast=True, padding_side="left"
     )
     tokenizer.pad_token_id = 1
     tokenizer.eos_token_id = 2
