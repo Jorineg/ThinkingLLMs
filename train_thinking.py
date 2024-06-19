@@ -510,6 +510,8 @@ def train_one_epoch(
         elif args["adv_whitening"] == "local":
             adv = masked_whiten(adv, mask)
 
+        print("after gather")
+
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
