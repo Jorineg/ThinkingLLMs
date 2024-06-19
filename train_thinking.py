@@ -325,6 +325,11 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     completed_texts = tokenizer.batch_decode(
         completed_tensors, skip_special_tokens=True
     )
+
+    completed_texts_with_special = tokenizer.batch_decode(
+        completed_tensors, skip_special_tokens=False
+    )
+
     generated_texts = extract_completion_batch(completed_texts)
     answers = extract_answer_cot_batch(generated_texts)
 
@@ -339,7 +344,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
             assert (
                 effective_cot_length >= answer_length
-            ), f"{generated_texts[i]} {effective_cot_length} {answer} {answer_length}"
+            ), f"'{completed_texts_with_special[i]}' '{completed_texts[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
 
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
@@ -410,7 +415,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     if ref_logprob is not None:
         kl = old_logprob - ref_logprob  # (bs, seqlen-1)
         # square the kl divergence elementwise
-        kl = kl ** 2
+        kl = kl**2
         kl = kl.float() * output_mask
         kl_rew = -kl  # NOTE the minus sign
         kl_coef = args["kl_coef"]
