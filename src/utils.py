@@ -109,15 +109,19 @@ def allgather_masked_whiten(values, mask, shift_mean=False):
     """
     allgather_values = allgather(values)  # (n_proc, bs, ...)
     # accelerator.print(f'allgather_values {allgather_values.shape}, {allgather_values[0, 0:3]}')
+    print(f"gathered values on device {torch.cuda.current_device()}")
 
     allgather_mask = allgather(mask)  # (n_proc, bs, ...)
     # accelerator.print(f'allgather_mask {allgather_mask.shape}, {allgather_mask[0, 0:3]}')
+    print(f"gathered mask on device {torch.cuda.current_device()}")
 
     global_mean = masked_mean(allgather_values, allgather_mask)
+    print(f"calculated global mean on device {torch.cuda.current_device()}")
     global_var = masked_var(allgather_values, allgather_mask)
     whitened = (values - global_mean) * torch.rsqrt(global_var + 1e-8)
     if shift_mean:
         whitened += global_mean
+    print(f"whitened values on device {torch.cuda.current_device()}")
     return whitened
 
 
