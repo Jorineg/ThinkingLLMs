@@ -414,7 +414,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         kl_coef = args["kl_coef"]
         kl_rew *= kl_coef
 
-    rew = 3*score_rew + cot_penalty_rew + kl_rew
+    rew = 3 * score_rew + cot_penalty_rew + kl_rew
 
     # TODO: fix lambda gamma error. They are used with swapped values
     gamma = args["gamma"]
@@ -960,13 +960,15 @@ def main(args):
     )
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
-    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
+    model = MODEL_CLASS.from_pretrained(
+        args["model_name_or_path"], trust_remote_code=True
+    )
 
     # initialize ref model (if any)
     ref_model = None
     if args["ref_model_name_or_path"]:
         ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-            args["ref_model_name_or_path"]
+            args["ref_model_name_or_path"], trust_remote_code=True
         )
 
     # optimizer
