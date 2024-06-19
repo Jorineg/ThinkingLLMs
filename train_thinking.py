@@ -218,6 +218,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                     batched=True,
                     batch_size=args["batch_size"],
                     remove_columns=dataset.column_names,
+                    drop_last_batch=True,
                 )
                 for mode, dataset in dataset.items()
             }
@@ -353,7 +354,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             accelerator.is_main_process
             and args["wandb_log"]
             and iter
-            and iter % 10 == 0
+            and iter % 100 == 0
         ):
             accelerator.print(f"---batch item {i}---")
             accelerator.print(
@@ -362,7 +363,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
                 f"no padding length: {no_padding_mask[i].sum().item()}\n"
                 f"completed text: {completed_texts[i]}\n"
                 f"target: {target}\n"
-                f"cot length: {effective_cot_length}\n"
+                f"cot length: {torch.sum(effective_cot_mask[i]).item()}\n"
                 f"extracted answer: {answer}\n"
                 f"answer len: {answer_length}\n"
                 f"reward: {reward}\n"
@@ -509,7 +510,6 @@ def train_one_epoch(
         elif args["adv_whitening"] == "local":
             adv = masked_whiten(adv, mask)
 
-
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
@@ -598,7 +598,6 @@ def train_one_epoch(
                 # thinking starts after end of query and unil answer_trigger
                 # thinking_len_per_sample = torch.clamp(
 
-
                 # Preprocess advantage and get metrics
                 cur_mask = cur_mask.type(cur_adv.dtype).contiguous()
                 mean_adv, var_adv = masked_mean(cur_adv, cur_mask), masked_var(
@@ -613,7 +612,6 @@ def train_one_epoch(
                     input_ids=cur_model_input_ids,
                     attention_mask=cur_model_attention_mask,
                 )
-
 
                 logprob = logprobs_from_logits(
                     lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
@@ -691,7 +689,6 @@ def train_one_epoch(
                     seq_kl = torch.sum(cur_kl * cur_mask, dim=1)  # (mini_bs,)
                     mean_seq_kl = torch.mean(seq_kl)
 
-
                 # Update
                 epoch_result_dict["loss"].append(loss.item())
 
@@ -726,7 +723,7 @@ def train_one_epoch(
                 optimizer.step()
                 model.zero_grad()
                 optimizer.zero_grad()
-                
+
                 # Update running stats
                 n_correct, total = do_gather([sum(correctness), len(correctness)])
                 train_stats["acc"] = n_correct / total
