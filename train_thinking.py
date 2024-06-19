@@ -637,8 +637,8 @@ def train_one_epoch(
                     (torch.max(pg_losses, pg_losses2) * cur_mask).sum(dim=-1)
                     / resp_len_per_sample
                 ).mean()
-                # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask[:, :-1]).sum() / cur_mask[:, :-1].sum()
-                # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask[:, :-1].sum()
+                # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask]).sum() / cur_mask.sum()
+                # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask.sum()
 
                 # value loss
                 vpredclipped = torch.max(
@@ -688,9 +688,9 @@ def train_one_epoch(
                 mean_kcxkl_reward = args["kl_coef"] * mean_kl_reward
 
                 # policy related metrics
-                mean_ratio = masked_mean(ratio, cur_mask[:, :-1])
-                # mean_adv = masked_mean(cur_adv[:, :-1], cur_mask[:, :-1])
-                mean_logprob = masked_mean(logprob, cur_mask[:, :-1])
+                mean_ratio = masked_mean(ratio, cur_mask)
+                # mean_adv = masked_mean(cur_adv, cur_mask)
+                mean_logprob = masked_mean(logprob, cur_mask)
                 # sequence-level kl
                 mean_seq_kl = -1.0
                 if cur_kl_rew is not None:
