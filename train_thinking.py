@@ -322,11 +322,17 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     effective_cot_mask = output_mask.clone()
 
     input_mask_input = tokenizer.batch_decode(
-        completed_tensors * input_mask, skip_special_tokens=False
+        torch.where(
+            input_mask, completed_tensors, torch.tensor(tokenizer.pad_token_id)
+        ),
+        skip_special_tokens=False,
     )
 
     output_mask_input = tokenizer.batch_decode(
-        completed_tensors * output_mask, skip_special_tokens=False
+        torch.where(
+            output_mask, completed_tensors, torch.tensor(tokenizer.pad_token_id)
+        ),
+        skip_special_tokens=False,
     )
 
     # Evaluate score
@@ -352,7 +358,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
             assert (
                 effective_cot_length >= answer_length
-            ), f"input Mask'{input_mask_input}' Output Mask '{output_mask_input}' '{completed_texts[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
+            ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' '{completed_texts[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
 
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
@@ -407,7 +413,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             lm_logits, labels=completed_tensors
         )  # (bs, seqlen-1)
 
-        print(f"old logprob shape: {old_logprob.shape}, lm_logits shape: {lm_logits.shape}, val shape: {val.shape}")
+        # print(
+        #     f"old logprob shape: {old_logprob.shape}, lm_logits shape: {lm_logits.shape}, val shape: {val.shape}"
+        # )
 
         # Get the ref model logprob
         ref_logprob = None
