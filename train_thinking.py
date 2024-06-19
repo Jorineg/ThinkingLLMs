@@ -431,6 +431,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     kl_rew = torch.zeros(
         completed_tensors.shape, device=completed_tensors.device
     )  # (bs, seqlen)
+    props = None
     if ref_logprob is not None:
         # Original implementation
         # kl = old_logprob - ref_logprob  # (bs, seqlen-1)
@@ -444,7 +445,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         kl = props * (torch.log(props) - torch.log(ref_props))
         kl = kl.sum(dim=-1)
         kl = kl * output_mask
-        
+
         # same in both implementations
         kl_rew = -kl  # NOTE the minus sign
         kl_coef = args["kl_coef"]
@@ -474,7 +475,13 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         cur_adv *= output_mask[i][:-1]
         adv[i][:-1] = cur_adv
 
-    ret = adv + val  # (bs, seqlen)
+    # original implementation:
+    # ret = adv + val  # (bs, seqlen)
+
+    # other implementation: returns = rewards[:, :-1] + gamma * next_values
+    # must be in shape (bs, seqlen)
+    ret = torch.zeros(rew.shape, device=completed_tensors.device)
+    ret[:, :-1] = rew[:, :-1] + gamma * val[:, 1:]
 
     old_logprob = old_logprob * output_mask
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
@@ -494,6 +501,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         adv,
         generated_texts,
         cot_lengths,
+        props,
     )
 
 
@@ -545,6 +553,7 @@ def train_one_epoch(
             adv,
             generated_texts,
             cot_lengths,
+            old_props,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
         torch.distributed.barrier()
         # preprocess
@@ -650,7 +659,9 @@ def train_one_epoch(
                 # TODO: WHY A SECOND FORWARD PASS?
                 # Forward current model
                 # TODO: why model.eval()???? Shouldn't it be model.train()?
-                model.eval()
+
+                # model.eval()
+
                 lm_logits, _, vpreds = model(
                     input_ids=cur_model_input_ids,
                     attention_mask=cur_model_attention_mask,
@@ -661,36 +672,51 @@ def train_one_epoch(
                 )  # (mini_bs, seqlen-1)
 
                 # Compute losses
-                loss = 0
 
+                # original implementation
+
+                # loss = 0
+                # # policy gradient loss
+                # ratio = torch.exp(logprob - cur_old_logprob)
+                # pg_losses = -cur_adv * ratio
+                # pg_losses2 = -cur_adv * torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2)
+                # pg_loss = (
+                #     (torch.max(pg_losses, pg_losses2) * cur_mask).sum(dim=-1)
+                #     / resp_len_per_sample
+                # ).mean()
+                # # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask]).sum() / cur_mask.sum()
+                # # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask.sum()
+
+                # # value loss
+                # vpredclipped = torch.max(
+                #     torch.min(vpreds, cur_val + 0.2), cur_val - 0.2
+                # )
+                # vf_losses1 = (vpreds - cur_ret) ** 2
+                # vf_losses2 = (vpredclipped - cur_ret) ** 2
+                # vf_loss = (
+                #     0.5
+                #     * (
+                #         (torch.max(vf_losses1, vf_losses2) * cur_mask).sum(dim=-1)
+                #         / resp_len_per_sample
+                #     ).mean()
+                # )
+                # # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
+
+                # # total loss
+                # loss += pg_loss + vf_coef * vf_loss
+
+                # other implementation
+                cur_old_props = old_props[b_inds, :-1].contiguous()
+                cur_props = F.softmax(lm_logits, dim=-1)[:, :-1].contiguous()
                 # policy gradient loss
-                ratio = torch.exp(logprob - cur_old_logprob)
-                pg_losses = -cur_adv * ratio
-                pg_losses2 = -cur_adv * torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2)
-                pg_loss = (
-                    (torch.max(pg_losses, pg_losses2) * cur_mask).sum(dim=-1)
-                    / resp_len_per_sample
-                ).mean()
-                # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask]).sum() / cur_mask.sum()
-                # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask.sum()
-
+                ratio = torch.exp(torch.log(cur_props) - torch.log(cur_old_props))
+                CLIP_PARAM = 0.2
+                surr1 = ratio * cur_adv
+                surr2 = torch.clamp(ratio, 1.0 - CLIP_PARAM, 1.0 + CLIP_PARAM) * cur_adv
+                pg_loss = -torch.min(surr1, surr2).mean()
                 # value loss
-                vpredclipped = torch.max(
-                    torch.min(vpreds, cur_val + 0.2), cur_val - 0.2
-                )
-                vf_losses1 = (vpreds - cur_ret) ** 2
-                vf_losses2 = (vpredclipped - cur_ret) ** 2
-                vf_loss = (
-                    0.5
-                    * (
-                        (torch.max(vf_losses1, vf_losses2) * cur_mask).sum(dim=-1)
-                        / resp_len_per_sample
-                    ).mean()
-                )
-                # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
-
-                # total loss
-                loss += pg_loss + vf_coef * vf_loss
+                vf_loss = F.mse_loss(vpreds, cur_ret)
+                loss = pg_loss + vf_coef * vf_loss
 
                 torch.distributed.barrier()
 
