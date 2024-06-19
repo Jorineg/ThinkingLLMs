@@ -1,23 +1,29 @@
 import torch
 from accelerate import Accelerator
 
-def allgather(tensor, accelerator):
-    # Ensure tensor is on the correct device
-    tensor = tensor.to(accelerator.device)
-    
-    # Perform the all_gather operation
-    gathered_tensors = accelerator.gather(tensor)
-    
-    # Reshape the gathered tensors
-    gathered_tensor = torch.cat(gathered_tensors, dim=0)
-    
-    return gathered_tensor
+def allgather(tensor, group=None):
+    """smantic sugar for torch.distributed.all_gather.
+
+    Args:
+        tensor: (bs, ...)
+        group:
+
+    Returns:
+        All gathered tensor (world_size, bs, ...)
+    """
+    if group is None:
+        group = torch.distributed.group.WORLD
+
+    allgather_tensor = [torch.zeros_like(tensor) for _ in range(group.size())]
+    torch.distributed.all_gather(allgather_tensor, tensor, group=group)
+    allgather_tensor = torch.stack(allgather_tensor, dim=0)
+    return allgather_tensor
+
 
 def main():
     accelerator = Accelerator()
     rank = accelerator.process_index
-    size = accelerator.num_processes
-    
+
     print(f"Process {rank} starting")
     
     # Create a tensor and print its initial value
@@ -25,7 +31,7 @@ def main():
     print(f"Process {rank} tensor before allgather: {tensor}")
     
     # Test allgather
-    gathered_tensor = allgather(tensor, accelerator)
+    gathered_tensor = allgather(tensor)  # (world_size, bs, ...)
     print(f"Process {rank} tensor after allgather: {gathered_tensor}")
     
     # Test without allgather

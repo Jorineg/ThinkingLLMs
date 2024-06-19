@@ -87,10 +87,6 @@ def allgather(tensor, group=None):
     if group is None:
         group = torch.distributed.group.WORLD
 
-    print(
-        f"dist initialized: {torch.distributed.is_initialized()}, group: {group.size()}"
-    )
-
     allgather_tensor = [torch.zeros_like(tensor) for _ in range(group.size())]
     torch.distributed.all_gather(allgather_tensor, tensor, group=group)
     allgather_tensor = torch.stack(allgather_tensor, dim=0)
