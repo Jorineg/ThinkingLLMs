@@ -323,14 +323,14 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     input_mask_input = tokenizer.batch_decode(
         torch.where(
-            input_mask, completed_tensors, torch.tensor(tokenizer.pad_token_id)
+            input_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
         ),
         skip_special_tokens=False,
     )
 
     output_mask_input = tokenizer.batch_decode(
         torch.where(
-            output_mask, completed_tensors, torch.tensor(tokenizer.pad_token_id)
+            output_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
         ),
         skip_special_tokens=False,
     )
