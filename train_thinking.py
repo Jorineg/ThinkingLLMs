@@ -321,13 +321,12 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # start with copy of output mask
     effective_cot_mask = output_mask.clone()
 
-
     input_mask_input = tokenizer.batch_decode(
-        completed_tensors*input_mask, skip_special_tokens=False
+        completed_tensors * input_mask, skip_special_tokens=False
     )
 
     output_mask_input = tokenizer.batch_decode(
-        completed_tensors*output_mask, skip_special_tokens=False
+        completed_tensors * output_mask, skip_special_tokens=False
     )
 
     # Evaluate score
@@ -407,6 +406,8 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         old_logprob = logprobs_from_logits(
             lm_logits, labels=completed_tensors
         )  # (bs, seqlen-1)
+
+        print(f"old logprob shape: {old_logprob.shape}")
 
         # Get the ref model logprob
         ref_logprob = None
