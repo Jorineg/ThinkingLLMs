@@ -9,9 +9,9 @@ tokenizer_name_or_path="jeggers/OpenELM-270M-Instruct"
 ref_model_name_or_path="jeggers/OpenELM-270M-Instruct"
 
 keep_num_ckpt='0'
-batch_size="120"
-mini_batch_size="120"
-eval_batch_size="120"
+batch_size="32"
+mini_batch_size="32"
+eval_batch_size="32"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
