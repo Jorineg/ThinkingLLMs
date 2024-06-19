@@ -9,9 +9,9 @@ tokenizer_name_or_path="facebook/galactica-125m"
 ref_model_name_or_path="facebook/galactica-125m"
 
 keep_num_ckpt='0'
-batch_size="32"
-mini_batch_size="32"
-eval_batch_size="32"
+batch_size="30"
+mini_batch_size="30"
+eval_batch_size="30"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
