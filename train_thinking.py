@@ -510,6 +510,9 @@ def train_one_epoch(
         elif args["adv_whitening"] == "local":
             adv = masked_whiten(adv, mask)
 
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
         batch_size_per_gpu = len(batch["input_ids"])
         train_stats = {}
         if accelerator.is_main_process and args["wandb_log"]:
@@ -667,6 +670,9 @@ def train_one_epoch(
                 std_resp_len = torch.mean(allgather(torch.std(resp_len_per_sample)))
 
                 print("gathered metrics")
+
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
 
                 # value related metrics
                 # vf_expl_var_num = torch.var(torch.masked_select(cur_ret - vpreds, cur_mask.bool()))
