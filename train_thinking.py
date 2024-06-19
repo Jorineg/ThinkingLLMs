@@ -623,7 +623,7 @@ def train_one_epoch(
                 )
 
                 logprob = logprobs_from_logits(
-                    lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
+                    lm_logits, cur_model_input_ids
                 )  # (mini_bs, seqlen-1)
 
                 # Compute losses
@@ -631,10 +631,10 @@ def train_one_epoch(
 
                 # policy gradient loss
                 ratio = torch.exp(logprob - cur_old_logprob)
-                pg_losses = -cur_adv[:, :-1] * ratio
-                pg_losses2 = -cur_adv[:, :-1] * torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2)
+                pg_losses = -cur_adv * ratio
+                pg_losses2 = -cur_adv * torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2)
                 pg_loss = (
-                    (torch.max(pg_losses, pg_losses2) * cur_mask[:, :-1]).sum(dim=-1)
+                    (torch.max(pg_losses, pg_losses2) * cur_mask).sum(dim=-1)
                     / resp_len_per_sample
                 ).mean()
                 # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask[:, :-1]).sum() / cur_mask[:, :-1].sum()
