@@ -347,7 +347,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             pass
             # accelerator.print(f"item {i}: answer trigger not found...")
 
-        reward = compare_and_calculate_reward(answer, target)
+        reward = compare_and_calculate_reward(generated_texts[i], target)
         correctness.append(reward)
 
         if (
