@@ -321,6 +321,15 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # start with copy of output mask
     effective_cot_mask = output_mask.clone()
 
+
+    input_mask_input = tokenizer.batch_decode(
+        completed_tensors*input_mask, skip_special_tokens=False
+    )
+
+    output_mask_input = tokenizer.batch_decode(
+        completed_tensors*output_mask, skip_special_tokens=False
+    )
+
     # Evaluate score
     completed_texts = tokenizer.batch_decode(
         completed_tensors, skip_special_tokens=True
@@ -344,7 +353,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
             assert (
                 effective_cot_length >= answer_length
-            ), f"'{completed_texts_with_special[i]}' '{completed_texts[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
+            ), f"input Mask'{input_mask_input}' Output Mask '{output_mask_input}' '{completed_texts[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
 
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
