@@ -391,7 +391,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         # TODO: understand why cut last token for each sequence???
         # what happens otherwise?
         old_logprob = logprobs_from_logits(
-            lm_logits[:, :-1, :], labels=completed_tensors[:, 1:]
+            lm_logits, labels=completed_tensors
         )  # (bs, seqlen-1)
 
         # Get the ref model logprob
@@ -401,7 +401,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
                 input_ids=completed_tensors, attention_mask=no_padding_mask
             )
             ref_logprob = logprobs_from_logits(
-                ref_lm_logits[:, :-1, :], labels=completed_tensors[:, 1:]
+                ref_lm_logits, labels=completed_tensors
             )  # (bs, seqlen-1)
 
     kl_rew = torch.zeros(
@@ -410,9 +410,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     if ref_logprob is not None:
         kl = old_logprob - ref_logprob  # (bs, seqlen-1)
         # absolute value
-        kl = torch.abs(kl)
-        kl = kl.float() * output_mask[:, :-1]
-        kl_rew[:, :-1] = -kl  # NOTE the minus sign
+        # kl = torch.abs(kl)
+        kl = kl.float() * output_mask
+        kl_rew = -kl  # NOTE the minus sign
         kl_coef = args["kl_coef"]
         kl_rew *= kl_coef
 
