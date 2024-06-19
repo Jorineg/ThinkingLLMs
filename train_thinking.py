@@ -20,6 +20,7 @@ from src.utils import (
 )
 from tqdm import tqdm
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import deepspeed
 from transformers import (
@@ -431,10 +432,20 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         completed_tensors.shape, device=completed_tensors.device
     )  # (bs, seqlen)
     if ref_logprob is not None:
-        kl = old_logprob - ref_logprob  # (bs, seqlen-1)
-        # square the kl divergence elementwise
-        kl = kl**2
-        kl = kl.float() * output_mask
+        # Original implementation
+        # kl = old_logprob - ref_logprob  # (bs, seqlen-1)
+        # # square the kl divergence elementwise
+        # kl = kl**2
+        # kl = kl.float() * output_mask
+
+        # other implementation
+        props = F.softmax(lm_logits, dim=-1)
+        ref_props = F.softmax(ref_lm_logits, dim=-1)
+        kl = props * (torch.log(props) - torch.log(ref_props))
+        kl = kl.sum(dim=-1)
+        kl = kl * output_mask
+        
+        # same in both implementations
         kl_rew = -kl  # NOTE the minus sign
         kl_coef = args["kl_coef"]
         kl_rew *= kl_coef
