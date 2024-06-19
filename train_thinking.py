@@ -467,6 +467,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # Process val ret adv logprob
     val = val.float() * output_mask
     adv = torch.zeros(rew.shape, device=completed_tensors.device)  # (bs, seqlen)
+    # original implementation
     for i in range(len(rew)):
         cur_rew, cur_val = rew[i], val[i]
         cur_delta = -cur_val[:-1] + cur_rew[:-1] + gamma * cur_val[1:]
@@ -475,13 +476,25 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         cur_adv *= output_mask[i][:-1]
         adv[i][:-1] = cur_adv
 
+    # other implementation
+    # last_gaelam = 0
+    # for t in reversed(range(rew.size(1))):
+    #     if t == rew.size(1) - 1:
+    #         nextnonterminal = 1.0 - output_mask[:, t]
+    #         delta = rew[:, t] + gamma * val[:, t] * nextnonterminal - val[:, t]
+    #         adv[:, t] = last_gaelam = delta
+    #     else:
+    #         nextnonterminal = 1.0 - output_mask[:, t]
+    #         delta = rew[:, t] + gamma * val[:, t] * nextnonterminal - val[:, t]
+    #         adv[:, t] = last_gaelam = delta + gamma * lam * nextnonterminal * last_gaelam
+
     # original implementation:
-    # ret = adv + val  # (bs, seqlen)
+    ret = adv + val  # (bs, seqlen)
 
     # other implementation: returns = rewards[:, :-1] + gamma * next_values
     # must be in shape (bs, seqlen)
-    ret = torch.zeros(rew.shape, device=completed_tensors.device)
-    ret[:, :-1] = rew[:, :-1] + gamma * val[:, 1:]
+    # ret = torch.zeros(rew.shape, device=completed_tensors.device)
+    # ret[:, :-1] = rew[:, :-1] + gamma * val[:, 1:]
 
     old_logprob = old_logprob * output_mask
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
@@ -712,6 +725,7 @@ def train_one_epoch(
                 cur_props = F.softmax(lm_logits, dim=-1)[:, :-1].contiguous()
                 # policy gradient loss
                 ratio = torch.exp(torch.log(cur_props) - torch.log(cur_old_props))
+                ratio = ratio.mean(dim=-1)
                 CLIP_PARAM = 0.2
                 surr1 = ratio * cur_adv
                 surr2 = torch.clamp(ratio, 1.0 - CLIP_PARAM, 1.0 + CLIP_PARAM) * cur_adv
