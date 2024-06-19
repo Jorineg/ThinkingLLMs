@@ -409,6 +409,8 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     )  # (bs, seqlen)
     if ref_logprob is not None:
         kl = old_logprob - ref_logprob  # (bs, seqlen-1)
+        # absolute value
+        kl = torch.abs(kl)
         kl = kl.float() * output_mask[:, :-1]
         kl_rew[:, :-1] = -kl  # NOTE the minus sign
         kl_coef = args["kl_coef"]
