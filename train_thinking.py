@@ -343,7 +343,8 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
         else:
-            accelerator.print(f"item {i}: answer trigger not found...")
+            pass
+            # accelerator.print(f"item {i}: answer trigger not found...")
 
         reward = compare_and_calculate_reward(answer, target)
         correctness.append(reward)
@@ -501,16 +502,13 @@ def train_one_epoch(
             generated_texts,
             cot_lengths,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
-        print("did rollout")
         torch.distributed.barrier()
-        print("after barrier")
         # preprocess
         if args["adv_whitening"] == "global":
             adv = allgather_masked_whiten(adv, mask)  # (mini_bs, seqlen)
         elif args["adv_whitening"] == "local":
             adv = masked_whiten(adv, mask)
 
-        print("after gather")
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -535,13 +533,11 @@ def train_one_epoch(
                 data=list(zip(*data.values())), columns=list(data.keys())
             )
             wandb.log({"thinking": table}, step=global_iter_num)
-            accelerator.print("logged thinking table")
 
             # create dataframe with columns dataset, cot length and score
             # group by dataset and calculate mean cot length
             # log mean cot length per dataset
             # cot_lengths = allgather(cot_lengths)
-            # accelerator.print("gathered cot lengths")
             dataset_cot_lengths = defaultdict(list)
             for dataset, cot_len, score in zip(
                 batch["dataset_name"], cot_lengths, correctness
@@ -549,7 +545,6 @@ def train_one_epoch(
                 dataset_cot_lengths[dataset].append(
                     {"cot_length": cot_len.cpu(), "score": score}
                 )
-            accelerator.print("created dataset cot lengths")
             dataset_metrics = {
                 dataset: {
                     "mean_cot_length": np.mean([x["cot_length"] for x in metrics]),
@@ -557,9 +552,7 @@ def train_one_epoch(
                 }
                 for dataset, metrics in dataset_cot_lengths.items()
             }
-            accelerator.print("calculated dataset metrics")
             wandb.log({"dataset_metrics": dataset_metrics}, step=global_iter_num)
-            accelerator.print("logged dataset metrics")
             # log penalty and cot_length
             wandb.log(
                 {
@@ -570,10 +563,8 @@ def train_one_epoch(
                 },
                 step=global_iter_num,
             )
-            accelerator.print("logged penalty and cot length")
 
         for _ in range(ppo_epochs):
-            print("doing ppo epoch")
             perms = torch.randperm(batch_size_per_gpu)
             for mini_idx in range(0, len(perms), mini_batch_size_per_gpu):
                 b_inds = perms[mini_idx : mini_idx + mini_batch_size_per_gpu]
@@ -607,7 +598,6 @@ def train_one_epoch(
                 # thinking starts after end of query and unil answer_trigger
                 # thinking_len_per_sample = torch.clamp(
 
-                print("did make contiguous")
 
                 # Preprocess advantage and get metrics
                 cur_mask = cur_mask.type(cur_adv.dtype).contiguous()
@@ -624,7 +614,6 @@ def train_one_epoch(
                     attention_mask=cur_model_attention_mask,
                 )
 
-                print("did second forward pass")
 
                 logprob = logprobs_from_logits(
                     lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
@@ -664,14 +653,11 @@ def train_one_epoch(
 
                 torch.distributed.barrier()
 
-                print("computed losses")
                 # token related metrics
                 mean_query_len = torch.mean(allgather(torch.mean(query_len_per_sample)))
                 std_query_len = torch.mean(allgather(torch.std(query_len_per_sample)))
                 mean_resp_len = torch.mean(allgather(torch.mean(resp_len_per_sample)))
                 std_resp_len = torch.mean(allgather(torch.std(resp_len_per_sample)))
-
-                print("gathered metrics")
 
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
@@ -705,7 +691,6 @@ def train_one_epoch(
                     seq_kl = torch.sum(cur_kl * cur_mask, dim=1)  # (mini_bs,)
                     mean_seq_kl = torch.mean(seq_kl)
 
-                print("computed metrics")
 
                 # Update
                 epoch_result_dict["loss"].append(loss.item())
@@ -738,12 +723,10 @@ def train_one_epoch(
                             model.parameters(), clip_grad_norm
                         )
 
-                print("did backward")
                 optimizer.step()
                 model.zero_grad()
                 optimizer.zero_grad()
-                print("did optimizer step")
-
+                
                 # Update running stats
                 n_correct, total = do_gather([sum(correctness), len(correctness)])
                 train_stats["acc"] = n_correct / total
