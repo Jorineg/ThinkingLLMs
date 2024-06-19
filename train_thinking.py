@@ -414,6 +414,13 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         kl_coef = args["kl_coef"]
         kl_rew *= kl_coef
 
+    # add cot_penaly_reward only after X steps (linearly increasing in Y steps)
+    start_penalty_after = args["start_penalty_after"]
+    penalty_warmup_steps = args["penalty_warmup_steps"]
+    if iter < start_penalty_after:
+        cot_penalty_rew *= 0.0
+    else:
+        cot_penalty_rew *= min(1.0, (iter - start_penalty_after) / penalty_warmup_steps)
     rew = 3 * score_rew + cot_penalty_rew + kl_rew
 
     # TODO: fix lambda gamma error. They are used with swapped values
@@ -1172,6 +1179,8 @@ if __name__ == "__main__":
         adv_whitening: str = field(default="global")
         ### new!
         temperature: float = field(default=1.0)
+        start_penalty_after: int = field(default=0)
+        penalty_warmup_steps: int = field(default=100)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()

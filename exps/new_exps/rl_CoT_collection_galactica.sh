@@ -37,6 +37,8 @@ wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
 temperature="1.0"
+start_penalty_after="1000"
+penalty_warmup_steps="100"
 
 num_processes='2'
 main_process_port='8889'
@@ -81,5 +83,7 @@ accelerate launch \
             --adv_whitening "${adv_whitening}" \
             --keep_num_ckpt "${keep_num_ckpt}" \
             --temperature "${temperature}" \
+                --start_penalty_after "${start_penalty_after}" \
+                --penalty_warmup_steps "${penalty_warmup_steps}" \
             1> >(tee "${model_dir}"/"${exp_name}".log) \
             2> >(tee "${model_dir}"/"${exp_name}".err >&2)

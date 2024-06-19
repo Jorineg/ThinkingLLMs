@@ -1,12 +1,12 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
-exp_name="CoT_collection_galactica_125m_reft_01"
-model_dir="thinking_models/_models_outputs_rl_small/CoT_collection_galactica_125m_reft_01"
+exp_name="CoT_collection_OpenELM270_reft_01"
+model_dir="thinking_models/_models_outputs_rl_small/CoT_collection_OpenELM270_reft_01"
 train_file="jeggers/CoT-Collection"
 
-model_name_or_path="apple/OpenELM-270M-Instruct"
-tokenizer_name_or_path="NousResearch/Llama-2-7b-hf"
-ref_model_name_or_path="apple/OpenELM-270M-Instruct"
+model_name_or_path="jeggers/OpenELM-270M-Instruct"
+tokenizer_name_or_path="jeggers/OpenELM-270M-Instruct"
+ref_model_name_or_path="jeggers/OpenELM-270M-Instruct"
 
 keep_num_ckpt='0'
 batch_size="120"
