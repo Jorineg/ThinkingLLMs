@@ -118,10 +118,11 @@ def allgather_masked_whiten(values, mask, shift_mean=False):
     global_mean = masked_mean(allgather_values, allgather_mask)
     print(f"calculated global mean on device {torch.cuda.current_device()}")
     global_var = masked_var(allgather_values, allgather_mask)
+    print(f"calculated global var on device {torch.cuda.current_device()}")
     whitened = (values - global_mean) * torch.rsqrt(global_var + 1e-8)
+    print(f"whitened values on device {torch.cuda.current_device()}")
     if shift_mean:
         whitened += global_mean
-    print(f"whitened values on device {torch.cuda.current_device()}")
     return whitened
 
 
