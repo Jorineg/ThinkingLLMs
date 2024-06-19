@@ -442,7 +442,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     ret = adv + val  # (bs, seqlen)
 
-    old_logprob = old_logprob * output_mask[:, :-1]
+    old_logprob = old_logprob * output_mask
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
 
     model.train()
