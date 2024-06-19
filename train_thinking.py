@@ -407,7 +407,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             lm_logits, labels=completed_tensors
         )  # (bs, seqlen-1)
 
-        print(f"old logprob shape: {old_logprob.shape}")
+        print(f"old logprob shape: {old_logprob.shape}, lm_logits shape: {lm_logits.shape}, val shape: {val.shape}")
 
         # Get the ref model logprob
         ref_logprob = None
