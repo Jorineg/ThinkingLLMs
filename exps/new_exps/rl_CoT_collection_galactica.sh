@@ -10,7 +10,7 @@ ref_model_name_or_path="facebook/galactica-125m"
 
 keep_num_ckpt='0'
 batch_size="20"
-mini_batch_size="20"
+mini_batch_size="10"
 eval_batch_size="20"
 ppo_epochs="2"
 n_epochs="700"

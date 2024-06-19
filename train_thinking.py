@@ -621,8 +621,10 @@ def train_one_epoch(
             for mini_idx in range(0, len(perms), mini_batch_size_per_gpu):
                 b_inds = perms[mini_idx : mini_idx + mini_batch_size_per_gpu]
                 # Subset to batch
-                cur_val = val[b_inds].contiguous()  # mini_bs x seqlen
-                cur_old_logprob = old_logprob[b_inds].contiguous()  # mini_bs x seqlen
+
+                # cur_val = val[b_inds].contiguous()  # mini_bs x seqlen
+                # cur_old_logprob = old_logprob[b_inds].contiguous()  # mini_bs x seqlen
+
                 cur_mask = mask[b_inds].contiguous()  # mini_bs x seqlen
                 cur_rew = rew[b_inds].contiguous()  # mini_bs x seqlen
                 cur_score_rew = score_rew[b_inds].contiguous()  # mini_bs x seqlen
