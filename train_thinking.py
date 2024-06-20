@@ -732,6 +732,7 @@ def train_one_epoch(
                 # value loss
                 vf_loss = F.mse_loss(vpreds, cur_ret)
                 loss = pg_loss + vf_coef * vf_loss
+                loss = loss.bfloat16()
 
                 torch.distributed.barrier()
 
