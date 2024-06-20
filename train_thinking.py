@@ -529,10 +529,10 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     accelerator.print(f"-- sample {debug_sample} --")
     accelerator.print(
-        f"input from batch: {batch['formatted_input'][debug_sample][:100]}"
+        f"input from batch: {batch['formatted_input'][debug_sample][100:200]}"
     )
     accelerator.print(
-        f"input from completed tensors: {tokenizer.decode(completed_tensors[debug_sample])[:100]}"
+        f"input from completed tensors: {tokenizer.decode(completed_tensors[debug_sample], skip_special_tokens=True)[100:200]}"
     )
     accelerator.print(f"penalty: {batch['penalty'][debug_sample]}")
     # accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
@@ -557,7 +557,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     accelerator.print(f"last completed token: {last_tok}")
     accelerator.print(f"cot length: {cot_lengths[debug_sample]}")
     accelerator.print(
-        f"score reward: {score_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(score_rew[debug_sample])}"
+        f"score reward: {score_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(score_rew[debug_sample])}, non zero: {torch.nonzero(score_rew[debug_sample])}"
     )
     accelerator.print(
         f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(kl_rew[debug_sample])}"
@@ -566,7 +566,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(cot_penalty_rew[debug_sample])}"
     )
     accelerator.print(
-        f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(max_gen_length_penalty_rew[debug_sample])}"
+        f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(max_gen_length_penalty_rew[debug_sample])}, non zero: {torch.nonzero(max_gen_length_penalty_rew[debug_sample])}"
     )
     accelerator.print(
         f"reward: {rew[debug_sample, last_tok-5:end]}", torch.sum(rew[debug_sample])
