@@ -52,10 +52,10 @@ OUT_COL = "final_target"
 
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
+answer_trigger = "Answer:"
 # must not be present in the problem text
 # cot_trigger = "Let's think step-by-step:"
-cot_trigger = "My Solution:"
-answer_trigger = "Answer:"
+cot_trigger = f"The final answer is indicated by '{answer_trigger}'\nSolution:"
 
 # instruction = f"""
 # Solve the problem below.
@@ -63,11 +63,12 @@ answer_trigger = "Answer:"
 # To indicate your final answer, write '{answer_trigger}' followed by your answer.
 # """
 
-instruction = f"""
-Here is the my problem and its solution.
-Some problems I broke down into steps.
-The final answer is always indicated by '{answer_trigger}'.
-"""
+# instruction = f"""
+# Here is the my problem and its solution.
+# Some problems I broke down into steps.
+# The final answer is indicated with '{answer_trigger}'.
+# """
+instruction = ""
 
 
 def format_input_batch(input_batch, penalties=None, answer_trigger="", outputs=None):
