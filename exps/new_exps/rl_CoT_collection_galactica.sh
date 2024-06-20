@@ -1,5 +1,6 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments=True
 exp_name="CoT_collection_galactica_125m_reft_01"
 model_dir="thinking_models/_models_outputs_rl_small/CoT_collection_galactica_125m_reft_01"
 train_file="jeggers/CoT-Collection"
@@ -9,9 +10,9 @@ tokenizer_name_or_path="facebook/galactica-125m"
 ref_model_name_or_path="facebook/galactica-125m"
 
 keep_num_ckpt='0'
-batch_size="16"
+batch_size="18"
 mini_batch_size="10"
-eval_batch_size="16"
+eval_batch_size="18"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
