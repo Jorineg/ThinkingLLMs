@@ -414,7 +414,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     max_gen_length_penalty_rew = torch.zeros(
         completed_tensors.shape, device=completed_tensors.device
     )
-    reached_max_gen_length = sum(output_mask, dim=1) >= args["max_gen_length"]
+    reached_max_gen_length = torch.sum(output_mask, dim=1) >= args["max_gen_length"]
     max_gen_length_penalty_rew[:, last_completed_token] = (
         reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
     )
