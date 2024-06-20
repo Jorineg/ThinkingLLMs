@@ -617,6 +617,7 @@ def train_one_epoch(
                 "generation": generated_texts,
                 "extracted answer": extracted_ans,
                 "correct answer": batch["target"],
+                "cot length": cot_lengths,
                 "answer score": correctness,
                 "score reward": torch.sum(score_rew, dim=1).tolist(),
                 "kl reward": torch.sum(kl_rew, dim=1).tolist(),
