@@ -539,6 +539,8 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         generated_texts,
         cot_lengths,
         props,
+        cot_penalty_rew,
+        max_gen_length_penalty_rew,
     )
 
 
@@ -591,6 +593,8 @@ def train_one_epoch(
             generated_texts,
             cot_lengths,
             old_props,
+            cot_penalty_rew,
+            max_gen_length_penalty_rew,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
         torch.distributed.barrier()
         # preprocess
@@ -614,6 +618,10 @@ def train_one_epoch(
                 "extracted answer": extracted_ans,
                 "correct answer": batch["target"],
                 "answer score": correctness,
+                "score reward": torch.sum(score_rew, dim=1).tolist(),
+                "kl reward": torch.sum(kl_rew, dim=1).tolist(),
+                "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
+                "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
                 "total reward": reward_sums,
             }
             # # sort by length of thinking, descending
