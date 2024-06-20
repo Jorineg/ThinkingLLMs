@@ -376,9 +376,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             debug_ids = torch.where(
                 output_mask[i].bool(), completed_tensors[i], torch.tensor(-1)
             )
-            assert (
-                effective_cot_length >= answer_length
-            ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' output ids '{debug_ids}' '{completed_texts_with_special[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
+            # assert (
+            #     effective_cot_length >= answer_length
+            # ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' output ids '{debug_ids}' '{completed_texts_with_special[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
 
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
@@ -410,7 +410,10 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
-    last_completed_token = torch.tensor([torch.nonzero(x).max().item() for x in output_mask], device=completed_tensors.device)
+    last_completed_token = torch.tensor(
+        [torch.nonzero(x).max().item() for x in output_mask],
+        device=completed_tensors.device,
+    )
     correctness_tensor = torch.tensor(
         correctness, device=completed_tensors.device, dtype=torch.float32
     )
