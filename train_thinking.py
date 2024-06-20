@@ -527,7 +527,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     debug_sample = random.randint(0, len(batch["input_ids"]) - 1)
     accelerator.print(f"-- sample {debug_sample} --")
-    accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
+    # accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
     accelerator.print(
         f"input length: {torch.sum(input_mask[debug_sample])}, {len(tokenizer(batch['formatted_input'][debug_sample])['input_ids'])}"
     )
@@ -535,8 +535,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         f"input length with padding: {len(batch['input_ids'][debug_sample])}"
     )
     accelerator.print(f"target: {batch['target'][debug_sample]}")
-    accelerator.print(f"generated: {generated_texts[debug_sample]}")
+    # accelerator.print(f"generated: {generated_texts[debug_sample]}")
     accelerator.print(f"answer: {answers[debug_sample]}")
+    accelerator.print(f"score: {correctness[debug_sample]}")
     accelerator.print(
         f"output length: {torch.sum(output_mask[debug_sample])}, {len(tokenizer(generated_texts[debug_sample])['input_ids'])}"
     )
@@ -547,15 +548,21 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     end = min(last_tok + 5, completed_tensors.shape[1])
     accelerator.print(f"last completed token: {last_tok}")
     accelerator.print(f"cot length: {cot_lengths[debug_sample]}")
-    accelerator.print(f"score reward: {score_rew[debug_sample, last_tok-5:end]}")
-    accelerator.print(f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}")
     accelerator.print(
-        f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}"
+        f"score reward: {score_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(score_rew[debug_sample])}"
     )
     accelerator.print(
-        f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}"
+        f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(kl_rew[debug_sample])}"
     )
-    accelerator.print(f"reward: {rew[debug_sample, last_tok-5:end]}")
+    accelerator.print(
+        f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(cot_penalty_rew[debug_sample])}"
+    )
+    accelerator.print(
+        f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(max_gen_length_penalty_rew[debug_sample])}"
+    )
+    accelerator.print(
+        f"reward: {rew[debug_sample, last_tok-5:end]}", torch.sum(rew[debug_sample])
+    )
 
     model.train()
     return (
