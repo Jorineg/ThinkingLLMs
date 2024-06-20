@@ -429,7 +429,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     start_penalty_after = args["start_penalty_after"]
     penalty_warmup_steps = args["penalty_warmup_steps"]
     cot_penalty_rew *= np.clip(
-        (iter - start_penalty_after) / penalty_warmup_steps, min=0.0, max=1.0
+        (iter - start_penalty_after) / penalty_warmup_steps, a_min=0.0, a_max=1.0
     )
 
     with torch.no_grad():
