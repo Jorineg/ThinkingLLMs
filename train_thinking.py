@@ -393,7 +393,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
     score_rew[:, last_completed_token] = torch.tensor(
-        correctness, device=completed_tensors.device, dtype=torch.bfloat16
+        correctness, device=completed_tensors.device, dtype=torch.float32
     )
 
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
@@ -675,8 +675,7 @@ def train_one_epoch(
                 # Forward current model
                 # TODO: why model.eval()???? Shouldn't it be model.train()?
 
-                # model.eval()
-
+                model.eval()
                 lm_logits, _, vpreds = model(
                     input_ids=cur_model_input_ids,
                     attention_mask=cur_model_attention_mask,
