@@ -411,19 +411,30 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
+    correctness_tensor = torch.tensor(
+        correctness, device=completed_tensors.device, dtype=torch.float32
+    )
     assert len(last_completed_token) == len(
         score_rew
     ), f"{len(last_completed_token)} {len(score_rew)}"
-    score_rew[:, last_completed_token] = torch.tensor(
-        correctness, device=completed_tensors.device, dtype=torch.float32
+    # score_rew[:, last_completed_token] = correctness_tensor
+    score_rew.scatter_(
+        1,
+        torch.tensor(last_completed_token).unsqueeze(1),
+        correctness_tensor.unsqueeze(1),
     )
 
     max_gen_length_penalty_rew = torch.zeros(
         completed_tensors.shape, device=completed_tensors.device
     )
     reached_max_gen_length = torch.sum(output_mask, dim=1) >= args["max_gen_length"]
-    max_gen_length_penalty_rew[:, last_completed_token] = (
-        reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
+    # max_gen_length_penalty_rew[:, last_completed_token] = (
+    #     reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
+    # )
+    max_gen_length_penalty_rew.scatter_(
+        1,
+        torch.tensor(last_completed_token).unsqueeze(1),
+        (reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH).unsqueeze(1),
     )
 
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
