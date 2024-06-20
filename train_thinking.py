@@ -45,6 +45,7 @@ REWARD_STARTSWITH_CORRECT = 0.5
 REWARD_EXACT_MATCH = 1.0
 REWARD_CONTAINS_ANSWER_TRIGGER = 0.1
 REWARD_ALLOW_NEGATIVE = True
+REWARD_MAX_GEN_LENGTH = -1
 
 IN_COL = "final_input"
 OUT_COL = "final_target"
@@ -52,13 +53,20 @@ OUT_COL = "final_target"
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 # must not be present in the problem text
-cot_trigger = "Let's think step-by-step:"
+# cot_trigger = "Let's think step-by-step:"
+cot_trigger = "My Solution:"
 answer_trigger = "Answer:"
 
+# instruction = f"""
+# Solve the problem below.
+# You may think step-by-step.
+# To indicate your final answer, write '{answer_trigger}' followed by your answer.
+# """
+
 instruction = f"""
-Solve the problem below.
-You may think step-by-step.
-To indicate your final answer, write '{answer_trigger}' followed by your answer.
+Here is the my problem and its solution.
+Some problems I broke down into steps.
+The final answer is always indicated by '{answer_trigger}'.
 """
 
 
@@ -174,6 +182,15 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
         accelerator.print("raw data:", dataset)
 
+        # check if CoT trigger is present in the input
+        def check_cot_trigger(batch):
+            if any([cot_trigger in item for item in batch[IN_COL]]):
+                raise ValueError("CoT trigger found in input")
+
+            return batch
+
+        check_cot_trigger(dataset, batched=True, batch_size=10000)
+
         # filter for tokens left
         def filter_fn(batch):
             formatted_input = format_input_batch(
@@ -184,7 +201,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             result = [len(toks) < max_len for toks in encoded]
             return result
 
-        dataset = dataset.filter(filter_fn, batched=True, batch_size=None)
+        dataset = dataset.filter(filter_fn, batched=True, batch_size=10000)
 
         accelerator.print("filtered data:", dataset)
         accelerator.print("Using instruction:", instruction)
@@ -341,9 +358,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         completed_tensors, skip_special_tokens=True
     )
 
-    completed_texts_with_special = tokenizer.batch_decode(
-        completed_tensors, skip_special_tokens=False
-    )
+    # completed_texts_with_special = tokenizer.batch_decode(
+    #     completed_tensors, skip_special_tokens=False
+    # )
 
     generated_texts = extract_completion_batch(completed_texts)
     answers = extract_answer_cot_batch(generated_texts)
@@ -396,11 +413,26 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         correctness, device=completed_tensors.device, dtype=torch.float32
     )
 
+    max_gen_length_penalty_rew = torch.zeros(
+        completed_tensors.shape, device=completed_tensors.device
+    )
+    reached_max_gen_length = sum(output_mask, dim=1) >= args["max_gen_length"]
+    max_gen_length_penalty_rew[:, last_completed_token] = (
+        reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
+    )
+
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
     cot_penalty_rew = torch.zeros(
         completed_tensors.shape, device=completed_tensors.device
     )  # (bs, seqlen)
     cot_penalty_rew = -penalties[:, None] * effective_cot_mask
+
+    # add cot_penaly_reward only after X steps (linearly increasing in Y steps)
+    start_penalty_after = args["start_penalty_after"]
+    penalty_warmup_steps = args["penalty_warmup_steps"]
+    cot_penalty_rew *= np.clip(
+        (iter - start_penalty_after) / penalty_warmup_steps, min=0.0, max=1.0
+    )
 
     with torch.no_grad():
         # Get old logprob and val
@@ -451,14 +483,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         kl_coef = args["kl_coef"]
         kl_rew *= kl_coef
 
-    # add cot_penaly_reward only after X steps (linearly increasing in Y steps)
-    start_penalty_after = args["start_penalty_after"]
-    penalty_warmup_steps = args["penalty_warmup_steps"]
-    if iter < start_penalty_after:
-        cot_penalty_rew *= 0.0
-    else:
-        cot_penalty_rew *= min(1.0, (iter - start_penalty_after) / penalty_warmup_steps)
-    rew = 3 * score_rew + cot_penalty_rew + kl_rew
+    rew = score_rew + cot_penalty_rew + kl_rew + max_gen_length_penalty_rew
 
     # TODO: fix lambda gamma error. They are used with swapped values
     gamma = args["gamma"]
