@@ -54,8 +54,8 @@ penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 answer_trigger = "Answer:"
 # must not be present in the problem text
-cot_trigger = "Let's think step-by-step:"
-# cot_trigger = f"Solution:"
+# cot_trigger = "Let's think step-by-step:"
+cot_trigger = f"Solution:"
 
 instruction = f"""
 Solve the problem below.
