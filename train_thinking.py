@@ -54,14 +54,14 @@ penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 answer_trigger = "Answer:"
 # must not be present in the problem text
-# cot_trigger = "Let's think step-by-step:"
-cot_trigger = f"The final answer is indicated by '{answer_trigger}'\nSolution:"
+cot_trigger = "Let's think step-by-step:"
+# cot_trigger = f"Solution:"
 
-# instruction = f"""
-# Solve the problem below.
-# You may think step-by-step.
-# To indicate your final answer, write '{answer_trigger}' followed by your answer.
-# """
+instruction = f"""
+Solve the problem below.
+You may think step-by-step.
+To indicate your final answer, write '{answer_trigger}' followed by your answer.
+"""
 
 # instruction = f"""
 # Here is the my problem and its solution.
