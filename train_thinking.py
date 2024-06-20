@@ -410,7 +410,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
-    last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
+    last_completed_token = torch.tensor([torch.nonzero(x).max().item() for x in output_mask], device=completed_tensors.device)
     correctness_tensor = torch.tensor(
         correctness, device=completed_tensors.device, dtype=torch.float32
     )
@@ -420,7 +420,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # score_rew[:, last_completed_token] = correctness_tensor
     score_rew.scatter_(
         1,
-        torch.tensor(last_completed_token).unsqueeze(1),
+        last_completed_token.unsqueeze(1),
         correctness_tensor.unsqueeze(1),
     )
 
