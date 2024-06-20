@@ -1,6 +1,6 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments=True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 exp_name="CoT_collection_galactica_125m_reft_01"
 model_dir="thinking_models/_models_outputs_rl_small/CoT_collection_galactica_125m_reft_01"
 train_file="jeggers/CoT-Collection"
