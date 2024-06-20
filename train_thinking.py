@@ -498,7 +498,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         kl_coef = args["kl_coef"]
         kl_rew *= kl_coef
 
-    rew = score_rew + cot_penalty_rew + kl_rew + max_gen_length_penalty_rew
+    rew = 3 * score_rew + cot_penalty_rew + kl_rew + max_gen_length_penalty_rew
 
     # TODO: fix lambda gamma error. They are used with swapped values
     gamma = args["gamma"]
