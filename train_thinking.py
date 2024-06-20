@@ -411,6 +411,15 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
+    accelerator.print(
+        "last completed token shape",
+        torch.tensor(last_completed_token).shape(),
+        "last completed token",
+        last_completed_token,
+    )
+    assert len(last_completed_token) == len(
+        score_rew
+    ), f"{len(last_completed_token)} {len(score_rew)}"
     score_rew[:, last_completed_token] = torch.tensor(
         correctness, device=completed_tensors.device, dtype=torch.float32
     )
@@ -419,6 +428,12 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         completed_tensors.shape, device=completed_tensors.device
     )
     reached_max_gen_length = torch.sum(output_mask, dim=1) >= args["max_gen_length"]
+    accelerator.print(
+        "output mask sum",
+        torch.sum(output_mask, dim=1),
+        "effective cot mask sum",
+        torch.sum(effective_cot_mask, dim=1),
+    )
     max_gen_length_penalty_rew[:, last_completed_token] = (
         reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
     )
@@ -447,10 +462,6 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         old_logprob = logprobs_from_logits(
             lm_logits, labels=completed_tensors
         )  # (bs, seqlen-1)
-
-        # print(
-        #     f"old logprob shape: {old_logprob.shape}, lm_logits shape: {lm_logits.shape}, val shape: {val.shape}"
-        # )
 
         # Get the ref model logprob
         ref_logprob = None
