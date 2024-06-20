@@ -526,6 +526,14 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
 
     debug_sample = random.randint(0, len(batch["input_ids"]) - 1)
+
+    accelerator.print(
+        f"input from batch: {batch['formatted_input'][debug_sample][:100]}"
+    )
+    accelerator.print(
+        f"input from completed tensors: {tokenizer.decode(completed_tensors[debug_sample])[:100]}"
+    )
+
     accelerator.print(f"-- sample {debug_sample} --")
     # accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
     accelerator.print(
