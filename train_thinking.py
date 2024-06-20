@@ -187,7 +187,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             if any([cot_trigger in item for item in batch[IN_COL]]):
                 raise ValueError("CoT trigger found in input")
 
-        check_cot_trigger(dataset)
+        dataset.map(check_cot_trigger, batched=True, batch_size=10000)
 
         # filter for tokens left
         def filter_fn(batch):
