@@ -413,7 +413,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
     accelerator.print(
         "last completed token shape",
-        torch.tensor(last_completed_token).shape(),
+        torch.tensor(last_completed_token).shape,
         "last completed token",
         last_completed_token,
     )
