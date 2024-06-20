@@ -38,8 +38,8 @@ wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
 temperature="1.0"
-start_penalty_after="1000"
-penalty_warmup_steps="100"
+start_penalty_after="0"
+penalty_warmup_steps="1"
 
 num_processes='2'
 main_process_port='8889'

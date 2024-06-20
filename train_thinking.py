@@ -720,7 +720,7 @@ def train_one_epoch(
                 # loss += pg_loss + vf_coef * vf_loss
 
                 # other implementation
-                cur_old_props = old_props[b_inds].bfloat16().contiguous()
+                cur_old_props = old_props[b_inds].contiguous()
                 cur_props = F.softmax(lm_logits, dim=-1).contiguous()
                 cur_adv = cur_adv.bfloat16()
                 cur_ret = cur_ret.bfloat16()
