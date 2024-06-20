@@ -689,49 +689,49 @@ def train_one_epoch(
 
                 # original implementation
 
-                loss = 0
-                # policy gradient loss
-                ratio = torch.exp(logprob - cur_old_logprob)
-                pg_losses = -cur_adv * ratio
-                pg_losses2 = -cur_adv * torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2)
-                pg_loss = (
-                    (torch.max(pg_losses, pg_losses2) * cur_mask).sum(dim=-1)
-                    / resp_len_per_sample
-                ).mean()
-                # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask]).sum() / cur_mask.sum()
-                # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask.sum()
+                # loss = 0
+                # # policy gradient loss
+                # ratio = torch.exp(logprob - cur_old_logprob)
+                # pg_losses = -cur_adv * ratio
+                # pg_losses2 = -cur_adv * torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2)
+                # pg_loss = (
+                #     (torch.max(pg_losses, pg_losses2) * cur_mask).sum(dim=-1)
+                #     / resp_len_per_sample
+                # ).mean()
+                # # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask]).sum() / cur_mask.sum()
+                # # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask.sum()
 
-                # value loss
-                vpredclipped = torch.max(
-                    torch.min(vpreds, cur_val + 0.2), cur_val - 0.2
-                )
-                vf_losses1 = (vpreds - cur_ret) ** 2
-                vf_losses2 = (vpredclipped - cur_ret) ** 2
-                vf_loss = (
-                    0.5
-                    * (
-                        (torch.max(vf_losses1, vf_losses2) * cur_mask).sum(dim=-1)
-                        / resp_len_per_sample
-                    ).mean()
-                )
-                # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
+                # # value loss
+                # vpredclipped = torch.max(
+                #     torch.min(vpreds, cur_val + 0.2), cur_val - 0.2
+                # )
+                # vf_losses1 = (vpreds - cur_ret) ** 2
+                # vf_losses2 = (vpredclipped - cur_ret) ** 2
+                # vf_loss = (
+                #     0.5
+                #     * (
+                #         (torch.max(vf_losses1, vf_losses2) * cur_mask).sum(dim=-1)
+                #         / resp_len_per_sample
+                #     ).mean()
+                # )
+                # # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
 
-                # total loss
-                loss += pg_loss + vf_coef * vf_loss
+                # # total loss
+                # loss += pg_loss + vf_coef * vf_loss
 
                 # other implementation
-                # cur_old_props = old_props[b_inds].contiguous()
-                # cur_props = F.softmax(lm_logits, dim=-1).contiguous()
-                # # policy gradient loss
-                # ratio = torch.exp(torch.log(cur_props) - torch.log(cur_old_props))
-                # ratio = ratio.mean(dim=-1)
-                # CLIP_PARAM = 0.2
-                # surr1 = ratio * cur_adv
-                # surr2 = torch.clamp(ratio, 1.0 - CLIP_PARAM, 1.0 + CLIP_PARAM) * cur_adv
-                # pg_loss = -torch.min(surr1, surr2).mean()
-                # # value loss
-                # vf_loss = F.mse_loss(vpreds, cur_ret)
-                # loss = pg_loss + vf_coef * vf_loss
+                cur_old_props = old_props[b_inds].bfloat16().contiguous()
+                cur_props = F.softmax(lm_logits, dim=-1).contiguous()
+                # policy gradient loss
+                ratio = torch.exp(torch.log(cur_props) - torch.log(cur_old_props))
+                ratio = ratio.mean(dim=-1)
+                CLIP_PARAM = 0.2
+                surr1 = ratio * cur_adv
+                surr2 = torch.clamp(ratio, 1.0 - CLIP_PARAM, 1.0 + CLIP_PARAM) * cur_adv
+                pg_loss = -torch.min(surr1, surr2).mean()
+                # value loss
+                vf_loss = F.mse_loss(vpreds, cur_ret)
+                loss = pg_loss + vf_coef * vf_loss
 
                 torch.distributed.barrier()
 
