@@ -721,7 +721,7 @@ def train_one_epoch(
 
                 # other implementation
                 cur_old_props = old_props[b_inds].bfloat16().contiguous()
-                cur_props = F.softmax(lm_logits, dim=-1).contiguous()
+                cur_props = F.softmax(lm_logits, dim=-1).bfloat16().contiguous()
                 # policy gradient loss
                 ratio = torch.exp(torch.log(cur_props) - torch.log(cur_old_props))
                 ratio = ratio.mean(dim=-1)
