@@ -411,12 +411,6 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
-    accelerator.print(
-        "last completed token shape",
-        torch.tensor(last_completed_token).shape,
-        "last completed token",
-        last_completed_token,
-    )
     assert len(last_completed_token) == len(
         score_rew
     ), f"{len(last_completed_token)} {len(score_rew)}"
@@ -428,12 +422,6 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         completed_tensors.shape, device=completed_tensors.device
     )
     reached_max_gen_length = torch.sum(output_mask, dim=1) >= args["max_gen_length"]
-    accelerator.print(
-        "output mask sum",
-        torch.sum(output_mask, dim=1),
-        "effective cot mask sum",
-        torch.sum(effective_cot_mask, dim=1),
-    )
     max_gen_length_penalty_rew[:, last_completed_token] = (
         reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
     )
@@ -536,6 +524,38 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     old_logprob = old_logprob * output_mask
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
+
+    debug_sample = random.randint(0, len(batch["input_ids"]) - 1)
+    accelerator.print(f"-- sample {debug_sample} --")
+    accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
+    accelerator.print(
+        f"input length: {torch.sum(input_mask[debug_sample])}, {len(tokenizer(batch['formatted_input'][debug_sample])['input_ids'])}"
+    )
+    accelerator.print(
+        f"input length with padding: {len(batch['input_ids'][debug_sample])}"
+    )
+    accelerator.print(f"target: {batch['target'][debug_sample]}")
+    accelerator.print(f"generated: {generated_texts[debug_sample]}")
+    accelerator.print(f"answer: {answers[debug_sample]}")
+    accelerator.print(
+        f"output length: {torch.sum(output_mask[debug_sample])}, {len(tokenizer(generated_texts[debug_sample])['input_ids'])}"
+    )
+    accelerator.print(
+        f"completed tensors length: {len(completed_tensors[debug_sample])}"
+    )
+    last_tok = last_completed_token[debug_sample]
+    end = min(last_tok + 5, completed_tensors.shape[1])
+    accelerator.print(f"last completed token: {last_tok}")
+    accelerator.print(f"cot length: {cot_lengths[debug_sample]}")
+    accelerator.print(f"score reward: {score_rew[debug_sample, last_tok-5:end]}")
+    accelerator.print(f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}")
+    accelerator.print(
+        f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}"
+    )
+    accelerator.print(
+        f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}"
+    )
+    accelerator.print(f"reward: {rew[debug_sample, last_tok-5:end]}")
 
     model.train()
     return (
