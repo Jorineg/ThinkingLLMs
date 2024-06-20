@@ -357,9 +357,9 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         completed_tensors, skip_special_tokens=True
     )
 
-    # completed_texts_with_special = tokenizer.batch_decode(
-    #     completed_tensors, skip_special_tokens=False
-    # )
+    completed_texts_with_special = tokenizer.batch_decode(
+        completed_tensors, skip_special_tokens=False
+    )
 
     generated_texts = extract_completion_batch(completed_texts)
     answers = extract_answer_cot_batch(generated_texts)
@@ -373,9 +373,12 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         answer_length = -1
         if answer_trigger in generated_texts[i]:
             answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
+            debug_ids = torch.where(
+                output_mask[i].bool(), completed_tensors[i], torch.tensor(-1)
+            )
             assert (
                 effective_cot_length >= answer_length
-            ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' '{completed_texts[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
+            ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' output ids '{debug_ids}' '{completed_texts_with_special[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
 
             output_mask_indices = output_mask[i].nonzero().squeeze()
             effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
