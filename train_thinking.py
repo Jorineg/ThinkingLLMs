@@ -393,7 +393,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # always reward the last token (eos) or any token in case of early stopping
     last_completed_token = [torch.nonzero(x).max().item() for x in output_mask]
     score_rew[:, last_completed_token] = torch.tensor(
-        correctness, device=completed_tensors.device, dtype=torch.float32
+        correctness, device=completed_tensors.device, dtype=torch.bfloat16
     )
 
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
