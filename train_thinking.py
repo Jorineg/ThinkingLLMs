@@ -68,7 +68,7 @@ To indicate your final answer, write '{answer_trigger}' followed by your answer.
 # Some problems I broke down into steps.
 # The final answer is indicated with '{answer_trigger}'.
 # """
-instruction = ""
+# instruction = ""
 
 
 def format_input_batch(input_batch, penalties=None, answer_trigger="", outputs=None):
