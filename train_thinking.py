@@ -52,7 +52,7 @@ OUT_COL = "final_target"
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 # must not be present in the problem text
-cot_trigger = ">> Bot:"
+cot_trigger = "Let's think step-by-step:"
 answer_trigger = "Answer:"
 
 instruction = f"""
@@ -721,10 +721,9 @@ def train_one_epoch(
 
                 # other implementation
                 cur_old_props = old_props[b_inds].bfloat16().contiguous()
-                cur_props = F.softmax(lm_logits, dim=-1).bfloat16().contiguous()
+                cur_props = F.softmax(lm_logits, dim=-1).contiguous()
                 cur_adv = cur_adv.bfloat16()
                 cur_ret = cur_ret.bfloat16()
-                # vpreds = vpreds.bfloat16()
                 # policy gradient loss
                 ratio = torch.exp(torch.log(cur_props) - torch.log(cur_old_props))
                 ratio = ratio.mean(dim=-1)
