@@ -539,52 +539,52 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     old_logprob = old_logprob * output_mask
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
 
-    debug_sample = random.randint(0, len(batch["input_ids"]) - 1)
+    # debug_sample = random.randint(0, len(batch["input_ids"]) - 1)
 
-    accelerator.print(f"-- sample {debug_sample} --")
-    accelerator.print(
-        f"input from batch: {batch['formatted_input'][debug_sample][100:200]}"
-    )
-    accelerator.print(
-        f"input from completed tensors: {tokenizer.decode(completed_tensors[debug_sample], skip_special_tokens=True)[100:200]}"
-    )
-    accelerator.print(f"penalty: {batch['penalty'][debug_sample]}")
-    # accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
-    accelerator.print(
-        f"input length: {torch.sum(input_mask[debug_sample])}, {len(tokenizer(batch['formatted_input'][debug_sample])['input_ids'])}"
-    )
-    accelerator.print(
-        f"input length with padding: {len(batch['input_ids'][debug_sample])}"
-    )
-    accelerator.print(f"target: {batch['target'][debug_sample]}")
-    # accelerator.print(f"generated: {generated_texts[debug_sample]}")
-    accelerator.print(f"answer: {answers[debug_sample]}")
-    accelerator.print(f"score: {correctness[debug_sample]}")
-    accelerator.print(
-        f"output length: {torch.sum(output_mask[debug_sample])}, {len(tokenizer(generated_texts[debug_sample])['input_ids'])}"
-    )
-    accelerator.print(
-        f"completed tensors length: {len(completed_tensors[debug_sample])}"
-    )
-    last_tok = last_completed_token[debug_sample]
-    end = min(last_tok + 5, completed_tensors.shape[1])
-    accelerator.print(f"last completed token: {last_tok}")
-    accelerator.print(f"cot length: {cot_lengths[debug_sample]}")
-    accelerator.print(
-        f"score reward: {score_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(score_rew[debug_sample])}, non zero: {torch.nonzero(score_rew[debug_sample])}"
-    )
-    accelerator.print(
-        f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(kl_rew[debug_sample])}"
-    )
-    accelerator.print(
-        f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(cot_penalty_rew[debug_sample])}"
-    )
-    accelerator.print(
-        f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(max_gen_length_penalty_rew[debug_sample])}, non zero: {torch.nonzero(max_gen_length_penalty_rew[debug_sample])}"
-    )
-    accelerator.print(
-        f"reward: {rew[debug_sample, last_tok-5:end]}", torch.sum(rew[debug_sample])
-    )
+    # accelerator.print(f"-- sample {debug_sample} --")
+    # accelerator.print(
+    #     f"input from batch: {batch['formatted_input'][debug_sample][100:200]}"
+    # )
+    # accelerator.print(
+    #     f"input from completed tensors: {tokenizer.decode(completed_tensors[debug_sample], skip_special_tokens=True)[100:200]}"
+    # )
+    # accelerator.print(f"penalty: {batch['penalty'][debug_sample]}")
+    # # accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
+    # accelerator.print(
+    #     f"input length: {torch.sum(input_mask[debug_sample])}, {len(tokenizer(batch['formatted_input'][debug_sample])['input_ids'])}"
+    # )
+    # accelerator.print(
+    #     f"input length with padding: {len(batch['input_ids'][debug_sample])}"
+    # )
+    # accelerator.print(f"target: {batch['target'][debug_sample]}")
+    # # accelerator.print(f"generated: {generated_texts[debug_sample]}")
+    # accelerator.print(f"answer: {answers[debug_sample]}")
+    # accelerator.print(f"score: {correctness[debug_sample]}")
+    # accelerator.print(
+    #     f"output length: {torch.sum(output_mask[debug_sample])}, {len(tokenizer(generated_texts[debug_sample])['input_ids'])}"
+    # )
+    # accelerator.print(
+    #     f"completed tensors length: {len(completed_tensors[debug_sample])}"
+    # )
+    # last_tok = last_completed_token[debug_sample]
+    # end = min(last_tok + 5, completed_tensors.shape[1])
+    # accelerator.print(f"last completed token: {last_tok}")
+    # accelerator.print(f"cot length: {cot_lengths[debug_sample]}")
+    # accelerator.print(
+    #     f"score reward: {score_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(score_rew[debug_sample])}, non zero: {torch.nonzero(score_rew[debug_sample])}"
+    # )
+    # accelerator.print(
+    #     f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(kl_rew[debug_sample])}"
+    # )
+    # accelerator.print(
+    #     f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(cot_penalty_rew[debug_sample])}"
+    # )
+    # accelerator.print(
+    #     f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(max_gen_length_penalty_rew[debug_sample])}, non zero: {torch.nonzero(max_gen_length_penalty_rew[debug_sample])}"
+    # )
+    # accelerator.print(
+    #     f"reward: {rew[debug_sample, last_tok-5:end]}", torch.sum(rew[debug_sample])
+    # )
 
     model.train()
     return (
