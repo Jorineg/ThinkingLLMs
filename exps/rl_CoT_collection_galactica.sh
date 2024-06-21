@@ -34,9 +34,10 @@ start_penalty_after="0"
 penalty_warmup_steps="1"
 
 ppo_epochs="2"
-mini_batch_size="20"
-eval_batch_size="40"
-batch_size="40"
+mini_batch_size="40"
+eval_batch_size="80"
+batch_size="80"
+num_processes='8'
 
 keep_num_ckpt='0'
 n_epochs="700"
@@ -59,7 +60,6 @@ wandb_run_name="${exp_name}"
 temperature="1.0"
 add_special_token_ids="True"
 
-num_processes='2'
 main_process_port='8889'
 
 mkdir -p "${model_dir}"
