@@ -568,7 +568,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             / 10
         )
 
-        kl_rew = kl_rew * ref_token_props * kl_coef
+        kl_rew = kl_rew * 1 * kl_coef
 
     rew = (
         score_rew
