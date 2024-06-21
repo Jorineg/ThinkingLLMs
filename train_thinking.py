@@ -535,7 +535,20 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         # normalized
         # ref_token_props = ref_token_props / ref_token_props.sum(dim=-1, keepdim=True)
 
-        kl_rew = kl_rew * 1 * kl_coef
+        # weight by fixed exponential decay
+        # ref_token_props = torch.exp(-torch.arange(ref_logprob.shape[1], device=ref_logprob.device) / 10)
+        # weight by fixed exponential decay with offset (completion_start_index)
+        ref_token_props = torch.exp(
+            -(
+                torch.arange(
+                    ref_logprob.shape[1], device=ref_logprob.device
+                )
+                - completion_start_index
+            )
+            / 10
+        )
+
+        kl_rew = kl_rew * ref_token_props * kl_coef
 
     rew = (
         score_rew
