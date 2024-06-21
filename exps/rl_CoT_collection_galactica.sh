@@ -32,12 +32,13 @@ learning_rate="5e-7"
 clip_grad_norm="1"
 start_penalty_after="2000"
 penalty_warmup_steps="100"
-batch_size="40"
-eval_batch_size="40"
+
+ppo_epochs="4"
 mini_batch_size="20"
+eval_batch_size="40"
+batch_size="40"
 
 keep_num_ckpt='0'
-ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
 weight_decay="0"
