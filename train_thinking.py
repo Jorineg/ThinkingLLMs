@@ -530,10 +530,11 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         kl_coef = args["kl_coef"]
 
         # weight by propability of ref model having reached this token
-        ref_logprob *= output_mask
-        ref_token_props = torch.exp(torch.cumsum(ref_logprob, dim=-1))
+        # ref_logprob *= output_mask
+        # ref_token_props = torch.exp(torch.cumsum(ref_logprob, dim=-1))
         # normalized
-        ref_token_props = ref_token_props / ref_token_props.sum(dim=-1, keepdim=True)
+        # ref_token_props = ref_token_props / ref_token_props.sum(dim=-1, keepdim=True)
+
         kl_rew = kl_rew * 1 * kl_coef
 
     rew = (
@@ -851,6 +852,9 @@ def train_one_epoch(
                     -1.0, vf_expl_var.item()
                 )  # the truncated value suffices
                 mean_vpred = masked_mean(vpreds, cur_mask)
+                mean_vpred_squarred_diff = masked_mean(
+                    (vpreds - cur_ret) ** 2, cur_mask
+                )
                 mean_return = masked_mean(cur_ret, cur_mask)
                 mean_reward = masked_mean(cur_rew, cur_mask)
                 mean_answer_trigger_present_rew = masked_mean(
@@ -955,6 +959,7 @@ def train_one_epoch(
                             "policy/mean_seq_kl": mean_seq_kl,
                             "value/vf_expl_var": vf_expl_var,
                             "value/mean_vpred": mean_vpred,
+                            "value/mean_vpred_squarred_diff": mean_vpred_squarred_diff,
                             "value/mean_return": mean_return,
                             "value/mean_reward": mean_reward,
                             "value/mean_score_reward": mean_score_reward,
