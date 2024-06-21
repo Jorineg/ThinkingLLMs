@@ -35,7 +35,7 @@ penalty_warmup_steps="1"
 
 ppo_epochs="2"
 mini_batch_size="40"
-eval_batch_size="75"
+eval_batch_size="50"
 batch_size="75"
 num_processes='8'
 
