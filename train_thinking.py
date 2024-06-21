@@ -62,14 +62,14 @@ You may solve the problem step-by-step.
 Given the premise below, is the hypothesis true? Respond with 'entailment' or 'not_entailment'. Premise: The so-called "grandmother hypothesis", based on studies of African hunter-gatherer groups, suggests that infertile women are vital for successful child-rearing despite being unable to produce children themselves. Hypothesis: The "grandmother hypothesis" suggests that infertile women are very important for raising children.
 
 {cot_trigger}
-{answer_trigger}entailment
+{answer_trigger}entailment</s>
 
 {problem_prefix}
 I used all the 12/25 centimeter (cm) lengths of yarn to make a square. What is the length of one side of this square?
 
 {cot_trigger}
 12/25 cm equals 0.48 cm. All sides together are 0.48 cm long. One side is 0.48 cm divided by 4, which equals 0.12 cm.
-{answer_trigger}0.12
+{answer_trigger}0.12</s>
 """
 # instruction = ""
 
