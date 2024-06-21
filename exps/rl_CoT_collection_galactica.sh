@@ -30,9 +30,9 @@ learning_rate="3e-6"
 clip_grad_norm="1"
 start_penalty_after="0"
 penalty_warmup_steps="1"
-batch_size="18"
-eval_batch_size="18"
-mini_batch_size="10"
+batch_size="50"
+eval_batch_size="50"
+mini_batch_size="50"
 
 keep_num_ckpt='0'
 ppo_epochs="2"
