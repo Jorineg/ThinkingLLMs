@@ -32,6 +32,7 @@ learning_rate="1e-6"
 clip_grad_norm="1"
 start_penalty_after="2000"
 penalty_warmup_steps="100"
+props_diff_coef="0.1"
 
 ppo_epochs="2"
 mini_batch_size="40"
@@ -112,5 +113,6 @@ accelerate launch \
         --reward_starts_correct "${reward_starts_correct}" \
         --reward_contains_answer_trigger "${reward_contains_answer_trigger}" \
         --reward_max_gen_length "${reward_max_gen_length}" \
+        --props_diff_coef "${props_diff_coef}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)

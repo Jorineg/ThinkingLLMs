@@ -631,6 +631,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         cot_penalty_rew,
         max_gen_length_penalty_rew,
         answer_trigger_present_rew,
+        ref_props,
     )
 
 
@@ -686,6 +687,7 @@ def train_one_epoch(
             cot_penalty_rew,
             max_gen_length_penalty_rew,
             answer_trigger_present_rew,
+            ref_props,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
         torch.distributed.barrier()
         # preprocess
@@ -814,6 +816,8 @@ def train_one_epoch(
                     lm_logits, cur_model_input_ids
                 )  # (mini_bs, seqlen-1)
 
+                lm_probs = F.softmax(lm_logits, dim=-1)
+
                 # Compute losses
 
                 # original implementation
@@ -862,7 +866,11 @@ def train_one_epoch(
                 pg_loss = -torch.min(surr1, surr2).mean()
                 # value loss
                 vf_loss = F.mse_loss(vpreds, cur_ret)
-                loss = pg_loss + vf_coef * vf_loss
+
+                # experimental props difference loss
+                props_diff = ((lm_probs - ref_props) ** 2).mean()
+                props_diff *= args["props_diff_coef"]
+                loss = pg_loss + vf_coef * vf_loss + props_diff
 
                 torch.distributed.barrier()
 
@@ -981,6 +989,7 @@ def train_one_epoch(
                             "loss/loss:": loss,
                             "loss/pg_loss": pg_loss,
                             "loss/vf_loss": vf_loss,
+                            "loss/props_diff": props_diff,
                             "tokens/mean_query_len": mean_query_len,
                             "tokens/std_query_len": std_query_len,
                             "tokens/mean_resp_len": mean_resp_len,
@@ -1407,6 +1416,7 @@ if __name__ == "__main__":
         reward_starts_correct: float = field(default=0.5)
         reward_contains_answer_trigger: float = field(default=0.1)
         reward_max_gen_length: float = field(default=-1.0)
+        props_diff_coef: float = field(default=0.0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
