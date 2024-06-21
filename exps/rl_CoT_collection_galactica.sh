@@ -22,7 +22,7 @@ ref_model_name_or_path="facebook/galactica-125m"
 
 gamma="0.9999"
 lam="0.999"
-vf_coef="1"
+vf_coef="5"
 kl_coef="0.005"
 reward_correct="5"
 reward_starts_correct="2.5"
