@@ -216,10 +216,18 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 formatted_input, add_special_tokens=False, padding="longest"
             )
 
+            target_length = [
+                len(seq)
+                for seq in tokenizer(batch[OUT_COL], add_special_tokens=False)[
+                    "input_ids"
+                ]
+            ]
+
             encoded_input["formatted_input"] = formatted_input
             encoded_input["raw_input"] = batch[IN_COL]
             encoded_input["dataset_name"] = batch["dataset"]
             encoded_input["target"] = batch[OUT_COL]
+            encoded_input["target_length"] = target_length
             encoded_input["penalty"] = penalties
             return encoded_input
 
@@ -261,6 +269,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "target": [item["target"] for item in batch],
+            "target_length": [item["target_length"] for item in batch],
             "dataset_name": [item["dataset_name"] for item in batch],
             "penalty": [item["penalty"] for item in batch],
         }
@@ -366,14 +375,22 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     generated_texts = extract_completion_batch(completed_texts)
     answers = extract_answer_cot_batch(generated_texts)
 
+    last_completed_token = torch.tensor(
+        [torch.nonzero(x).max().item() for x in output_mask],
+        device=completed_tensors.device,
+    )
+
     correctness = []
     answer_trigger_end_tokens = []
+    answer_end_token_positions = []
     for i, (answer, target) in enumerate(zip(answers, batch["target"])):
         # effective_cot_length = torch.sum(output_mask[i]).item()
 
         # subtract answer length from cot only if answer trigger is present at least two times
         answer_length = -1
         answer_trigger_start_token = -1
+        answer_end_token = last_completed_token[i]
+        reward = compare_and_calculate_reward(generated_texts[i], target)
         if answer_trigger in generated_texts[i]:
             # decode generated text token wise
             generated_token_texts = tokenizer.batch_decode(
@@ -390,22 +407,18 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             assert (
                 answer_trigger_start_token != -1
             ), f"answer trigger not found in '{generated_token_texts}' '{text}', '{generated_texts[i]}'"
-            # answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
-            # debug_ids = torch.where(
-            #     output_mask[i].bool(), completed_tensors[i], torch.tensor(-1)
-            # )
-            # assert (
-            #     effective_cot_length >= answer_length
-            # ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' output ids '{debug_ids}' '{completed_texts_with_special[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
+            if reward > 0:
+                text = ""
+                answer_pos = answer_trigger_start_token + answer_trigger_token_count
+                for idx, token in enumerate(generated_token_texts[answer_pos:]):
+                    text += token
+                    if target in text:
+                        answer_end_token = answer_pos + idx
+                        break
+            effective_cot_mask[i, answer_trigger_start_token:answer_end_token] = 0
 
-            # output_mask_indices = output_mask[i].nonzero().squeeze()
-            effective_cot_mask[i, answer_trigger_start_token:] = 0
-        else:
-            pass
-            # accelerator.print(f"item {i}: answer trigger not found...")
-
-        reward = compare_and_calculate_reward(generated_texts[i], target)
         correctness.append(reward)
+        answer_end_token_positions.append(answer_end_token)
         answer_trigger_end_tokens.append(
             answer_trigger_start_token + answer_trigger_token_count
             if answer_trigger_start_token != -1
@@ -433,16 +446,15 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
     score_rew = torch.zeros(completed_tensors.shape, device=completed_tensors.device)
     # always reward the last token (eos) or any token in case of early stopping
-    last_completed_token = torch.tensor(
-        [torch.nonzero(x).max().item() for x in output_mask],
-        device=completed_tensors.device,
-    )
     correctness_tensor = torch.tensor(
         correctness, device=completed_tensors.device, dtype=torch.float32
     )
+    answer_end_token_positions = torch.tensor(
+        answer_end_token_positions, device=completed_tensors.device
+    )
     score_rew.scatter_(
         1,
-        last_completed_token.unsqueeze(1),
+        answer_end_token_positions.unsqueeze(1),
         correctness_tensor.unsqueeze(1),
     )
     score_rew *= args["score_coef"]
@@ -540,9 +552,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         # weight by fixed exponential decay with offset (completion_start_index)
         ref_token_props = torch.exp(
             -(
-                torch.arange(
-                    ref_logprob.shape[1], device=ref_logprob.device
-                )
+                torch.arange(ref_logprob.shape[1], device=ref_logprob.device)
                 - completion_start_index
             )
             / 10
