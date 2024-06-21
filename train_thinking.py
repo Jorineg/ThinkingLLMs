@@ -540,7 +540,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
 
         # weight by propability of ref model having reached this token
         ref_logprob *= output_mask
-        ref_token_props = torch.cumprod(ref_props, dim=-1)  # (bs, seqlen)
+        ref_token_props = torch.exp(torch.cumsum(ref_logprob, dim=-1))
         # normalized
         ref_token_props = ref_token_props / ref_token_props.sum(dim=-1, keepdim=True)
         kl_rew = kl_rew * ref_token_props * kl_coef
