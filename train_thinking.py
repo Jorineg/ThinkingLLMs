@@ -41,9 +41,6 @@ tqdm = partial(tqdm, ncols=0, leave=False)
 
 TIMEOUT = 10
 
-REWARD_STARTSWITH_CORRECT = 0.5
-REWARD_EXACT_MATCH = 1.0
-REWARD_CONTAINS_ANSWER_TRIGGER = 0.1
 REWARD_ALLOW_NEGATIVE = True
 REWARD_MAX_GEN_LENGTH = -1
 
@@ -106,9 +103,9 @@ def extract_answer_cot_batch(answer_cot_batch):
 
 def check_answer(extracted_ans, target_answer):
     if extracted_ans.strip() == target_answer:
-        return REWARD_EXACT_MATCH
+        return args["reward_correct"]
     if extracted_ans.strip().startswith(target_answer):
-        return REWARD_STARTSWITH_CORRECT
+        return args["reward_starts_correct"]
     return 0
 
 
@@ -117,13 +114,6 @@ def compare_and_calculate_reward(cot, target_answer, token_count=0, cot_penalty=
     if answer_trigger in cot:
         extracted_ans = extract_answer_cot_batch([cot])[0]
         reward = check_answer(extracted_ans, target_answer)
-        # if reward == 0:
-        #     reward += REWARD_CONTAINS_ANSWER_TRIGGER
-
-    # reward -= cot_penalty * token_count
-
-    # if not REWARD_ALLOW_NEGATIVE:
-    #     reward = max(0, reward)
     return reward
 
 
@@ -468,7 +458,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         1,
         answer_trigger_end_tokens.unsqueeze(1),
         torch.where(
-            answer_trigger_end_tokens > 0, REWARD_CONTAINS_ANSWER_TRIGGER, 0
+            answer_trigger_end_tokens > 0, args["reward_contains_answer_trigger"], 0
         ).unsqueeze(1),
     )
 
@@ -476,13 +466,10 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         completed_tensors.shape, device=completed_tensors.device
     )
     reached_max_gen_length = torch.sum(output_mask, dim=1) >= args["max_gen_length"]
-    # max_gen_length_penalty_rew[:, last_completed_token] = (
-    #     reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH
-    # )
     max_gen_length_penalty_rew.scatter_(
         1,
         torch.tensor(last_completed_token).unsqueeze(1),
-        (reached_max_gen_length.float() * REWARD_MAX_GEN_LENGTH).unsqueeze(1),
+        (reached_max_gen_length.float() * args["reward_max_gen_length"]).unsqueeze(1),
     )
 
     penalties = torch.tensor(batch["penalty"], device=completed_tensors.device)
@@ -1378,6 +1365,10 @@ if __name__ == "__main__":
         score_coef: float = field(default=1.0)
         git_commit_hash: str = field(default="None")
         git_commit_name: str = field(default="None")
+        reward_correct: float = field(default=1.0)
+        reward_starts_correct: float = field(default=0.5)
+        reward_contains_answer_trigger: float = field(default=0.1)
+        reward_max_gen_length: float = field(default=-1.0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()

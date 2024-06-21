@@ -23,8 +23,11 @@ ref_model_name_or_path="facebook/galactica-125m"
 gamma="0.9999"
 lam="0.999"
 vf_coef="5"
-kl_coef="0.02"
-score_coef="5"
+kl_coef="0.005"
+reward_correct="1"
+reward_starts_correct="0.5"
+reward_contains_answer_trigger="0.1"
+reward_max_gen_length="-1.0"
 learning_rate="3e-6"
 clip_grad_norm="1"
 start_penalty_after="0"
@@ -102,8 +105,11 @@ accelerate launch \
         --start_penalty_after "${start_penalty_after}" \
         --penalty_warmup_steps "${penalty_warmup_steps}" \
         --add_special_token_ids "${add_special_token_ids}" \
-        --score_coef "${score_coef}" \
         --git_commit_hash "${commit_hash}" \
         --git_commit_name "${commit_name}" \
+        --reward_correct "${reward_correct}" \
+        --reward_starts_correct "${reward_starts_correct}" \
+        --reward_contains_answer_trigger "${reward_contains_answer_trigger}" \
+        --reward_max_gen_length "${reward_max_gen_length}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)
