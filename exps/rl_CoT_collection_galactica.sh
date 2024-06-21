@@ -28,15 +28,15 @@ reward_correct="5"
 reward_starts_correct="2.5"
 reward_contains_answer_trigger=".5"
 reward_max_gen_length="-0.3"
-learning_rate="3e-7"
+learning_rate="1e-6"
 clip_grad_norm="1"
 start_penalty_after="0"
 penalty_warmup_steps="1"
 
 ppo_epochs="2"
 mini_batch_size="40"
-eval_batch_size="50"
-batch_size="75"
+eval_batch_size="70"
+batch_size="80"
 num_processes='8'
 
 keep_num_ckpt='0'
