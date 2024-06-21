@@ -547,7 +547,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         ref_token_props = torch.exp(torch.cumsum(ref_logprob, dim=-1))
         # normalized
         ref_token_props = ref_token_props / ref_token_props.sum(dim=-1, keepdim=True)
-        kl_rew = kl_rew * ref_token_props * kl_coef
+        kl_rew = kl_rew * 1 * kl_coef
 
     rew = (
         score_rew
