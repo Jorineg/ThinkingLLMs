@@ -326,20 +326,17 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             max_new_tokens=args["max_gen_length"],
         )
 
-    # input_mask = pad_across_processes(batch["attention_mask"], dim=1, pad_index=0)
     # pad with 0s to size of completed tensors
     completion_start_index = batch["input_ids"].shape[1]
     padding = (0, completed_tensors.shape[1] - completion_start_index)
-    input_mask = torch.nn.functional.pad(input_mask, padding, value=0)
+    input_mask = torch.nn.functional.pad(batch["attention_mask"], padding, value=0)
 
     # pad at the end
     completed_tensors = pad_across_processes(
         completed_tensors, dim=1, pad_index=tokenizer.pad_token_id
     )
 
-    input_mask = pad_across_processes(
-        input_mask, dim=1, pad_index=0
-    )
+    input_mask = pad_across_processes(input_mask, dim=1, pad_index=0)
 
     # mask no padding (input output only)
     no_padding_mask = completed_tensors != tokenizer.pad_token_id
@@ -748,6 +745,9 @@ def train_one_epoch(
 
                 cur_mask = mask[b_inds].contiguous()  # mini_bs x seqlen
                 cur_rew = rew[b_inds].contiguous()  # mini_bs x seqlen
+                cur_answer_trigger_present_rew = answer_trigger_present_rew[
+                    b_inds
+                ].contiguous()  # mini_bs x seqlen
                 cur_score_rew = score_rew[b_inds].contiguous()  # mini_bs x seqlen
                 cur_kl_rew = (
                     None if kl_rew is None else kl_rew[b_inds].contiguous()
@@ -866,6 +866,9 @@ def train_one_epoch(
                 mean_vpred = masked_mean(vpreds, cur_mask)
                 mean_return = masked_mean(cur_ret, cur_mask)
                 mean_reward = masked_mean(cur_rew, cur_mask)
+                mean_answer_trigger_present_rew = masked_mean(
+                    cur_answer_trigger_present_rew, cur_mask
+                )
                 mean_score_reward = masked_mean(cur_score_rew, cur_mask)
                 mean_kl_reward = (
                     0.0 if cur_kl_rew is None else masked_mean(cur_kl_rew, cur_mask)
@@ -968,6 +971,7 @@ def train_one_epoch(
                             "value/mean_return": mean_return,
                             "value/mean_reward": mean_reward,
                             "value/mean_score_reward": mean_score_reward,
+                            "value/mean_answer_trigger_present_rew": mean_answer_trigger_present_rew,
                             "value/mean_kl_reward": mean_kl_reward,
                             "value/mean_kcxkl_reward": mean_kcxkl_reward,
                         },
