@@ -34,9 +34,9 @@ start_penalty_after="0"
 penalty_warmup_steps="1"
 
 ppo_epochs="2"
-mini_batch_size="70"
-eval_batch_size="75"
-batch_size="75"
+mini_batch_size="40"
+eval_batch_size="50"
+batch_size="50"
 num_processes='1'
 
 keep_num_ckpt='0'
@@ -52,7 +52,7 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="200"
+max_input_length="400"
 max_gen_length="200"
 wandb_log="True"
 wandb_project="thinking_small"
