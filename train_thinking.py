@@ -70,6 +70,8 @@ To indicate your final answer, write '{answer_trigger}' followed by your answer.
 # """
 # instruction = ""
 
+answer_trigger_token_count = -1
+
 
 def format_input_batch(input_batch, penalties=None, answer_trigger="", outputs=None):
     if penalties is None:
@@ -96,7 +98,10 @@ def extract_completion_batch(input_and_completion_batch):
 # returns empty string if no answer trigger is found
 def extract_answer_cot_batch(answer_cot_batch):
     splitted = [res.split(answer_trigger) for res in answer_cot_batch]
-    return [splitted[-1] if len(splitted) >= 2 else "" for splitted in splitted]
+    return [
+        answer_trigger.join(splitted[1:]) if len(splitted) >= 2 else ""
+        for splitted in splitted
+    ]
 
 
 def check_answer(extracted_ans, target_answer):
@@ -112,13 +117,13 @@ def compare_and_calculate_reward(cot, target_answer, token_count=0, cot_penalty=
     if answer_trigger in cot:
         extracted_ans = extract_answer_cot_batch([cot])[0]
         reward = check_answer(extracted_ans, target_answer)
-        if reward == 0:
-            reward += REWARD_CONTAINS_ANSWER_TRIGGER
+        # if reward == 0:
+        #     reward += REWARD_CONTAINS_ANSWER_TRIGGER
 
-    reward -= cot_penalty * token_count
+    # reward -= cot_penalty * token_count
 
-    if not REWARD_ALLOW_NEGATIVE:
-        reward = max(0, reward)
+    # if not REWARD_ALLOW_NEGATIVE:
+    #     reward = max(0, reward)
     return reward
 
 
@@ -170,6 +175,7 @@ def prepare_deepspeed_ref_model(model):
 
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
+        answer_trigger_token_count = len(tokenizer(answer_trigger)["input_ids"])
         dataset = load_dataset("jeggers/CoT-Collection")
 
         randon_elems = random.sample(range(len(dataset["test"])), 500)
@@ -330,64 +336,87 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # mask for model input (prompt only, no padding)
     input_mask = pad_across_processes(batch["attention_mask"], dim=1, pad_index=0)
     # pad with 0s to size of completed tensors
-    padding = (0, completed_tensors.shape[1] - input_mask.shape[1])
+    completion_start_index = input_mask.shape[1]
+    padding = (0, completed_tensors.shape[1] - completion_start_index)
     input_mask = torch.nn.functional.pad(input_mask, padding, value=0)
+    input_mask = input_mask & no_padding_mask
     # mask for model output (output only, no padding)
     output_mask = no_padding_mask & ~input_mask
     # mask for effective cot tokens (output only, no padding, no answer trigger, no answer)
     # start with copy of output mask
     effective_cot_mask = output_mask.clone()
 
-    input_mask_input = tokenizer.batch_decode(
-        torch.where(
-            input_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
-        ),
-        skip_special_tokens=False,
-    )
+    # input_mask_input = tokenizer.batch_decode(
+    #     torch.where(
+    #         input_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
+    #     ),
+    #     skip_special_tokens=False,
+    # )
 
-    output_mask_input = tokenizer.batch_decode(
-        torch.where(
-            output_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
-        ),
-        skip_special_tokens=False,
-    )
+    # output_mask_input = tokenizer.batch_decode(
+    #     torch.where(
+    #         output_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
+    #     ),
+    #     skip_special_tokens=False,
+    # )
 
     # Evaluate score
     completed_texts = tokenizer.batch_decode(
         completed_tensors, skip_special_tokens=True
     )
 
-    completed_texts_with_special = tokenizer.batch_decode(
-        completed_tensors, skip_special_tokens=False
-    )
+    # completed_texts_with_special = tokenizer.batch_decode(
+    #     completed_tensors, skip_special_tokens=False
+    # )
 
     generated_texts = extract_completion_batch(completed_texts)
     answers = extract_answer_cot_batch(generated_texts)
 
     correctness = []
+    answer_trigger_end_tokens = []
     for i, (answer, target) in enumerate(zip(answers, batch["target"])):
-        effective_cot_length = torch.sum(output_mask[i]).item()
+        # effective_cot_length = torch.sum(output_mask[i]).item()
 
-        # tokenize final answer and trigger to substract from cot length
         # subtract answer length from cot only if answer trigger is present at least two times
         answer_length = -1
+        answer_trigger_start_token = -1
         if answer_trigger in generated_texts[i]:
-            answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
-            debug_ids = torch.where(
-                output_mask[i].bool(), completed_tensors[i], torch.tensor(-1)
+            # decode generated text token wise
+            generated_token_texts = tokenizer.batch_decode(
+                completed_tensors[i], skip_special_tokens=True
             )
+            text = ""
+            for idx, token in enumerate(generated_token_texts[completion_start_index:]):
+                text += token
+                if answer_trigger in text:
+                    answer_trigger_start_token = (
+                        completion_start_index + idx - answer_trigger_token_count
+                    )
+                    break
+            assert (
+                answer_trigger_start_token != -1
+            ), f"answer trigger not found in '{generated_token_texts}' '{text}', '{generated_texts[i]}'"
+            # answer_length = len(tokenizer(answer_trigger + answer)["input_ids"])
+            # debug_ids = torch.where(
+            #     output_mask[i].bool(), completed_tensors[i], torch.tensor(-1)
+            # )
             # assert (
             #     effective_cot_length >= answer_length
             # ), f"input Mask'{input_mask_input[i]}' Output Mask '{output_mask_input[i]}' output ids '{debug_ids}' '{completed_texts_with_special[i]}' '{generated_texts[i]}' {effective_cot_length} '{answer}' {answer_length}"
 
-            output_mask_indices = output_mask[i].nonzero().squeeze()
-            effective_cot_mask[i, output_mask_indices[-answer_length:]] = 0
+            # output_mask_indices = output_mask[i].nonzero().squeeze()
+            effective_cot_mask[i, answer_trigger_start_token:] = 0
         else:
             pass
             # accelerator.print(f"item {i}: answer trigger not found...")
 
         reward = compare_and_calculate_reward(generated_texts[i], target)
         correctness.append(reward)
+        answer_trigger_end_tokens.append(
+            answer_trigger_start_token + answer_trigger_token_count
+            if answer_trigger_start_token != -1
+            else 0
+        )
 
         if (
             accelerator.is_main_process
@@ -417,14 +446,26 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     correctness_tensor = torch.tensor(
         correctness, device=completed_tensors.device, dtype=torch.float32
     )
-    assert len(last_completed_token) == len(
-        score_rew
-    ), f"{len(last_completed_token)} {len(score_rew)}"
-    # score_rew[:, last_completed_token] = correctness_tensor
     score_rew.scatter_(
         1,
         last_completed_token.unsqueeze(1),
         correctness_tensor.unsqueeze(1),
+    )
+    score_rew *= args["score_coef"]
+
+    # give reward at end of answer trigger if present
+    answer_trigger_present_rew = torch.zeros(
+        completed_tensors.shape, device=completed_tensors.device
+    )
+    answer_trigger_end_tokens = torch.tensor(
+        answer_trigger_end_tokens, device=completed_tensors.device
+    )
+    answer_trigger_present_rew.scatter_(
+        1,
+        answer_trigger_end_tokens.unsqueeze(1),
+        torch.where(
+            answer_trigger_end_tokens > 0, REWARD_CONTAINS_ANSWER_TRIGGER, 0
+        ).unsqueeze(1),
     )
 
     max_gen_length_penalty_rew = torch.zeros(
@@ -496,9 +537,21 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         # same in both implementations
         kl_rew = -kl  # NOTE the minus sign
         kl_coef = args["kl_coef"]
-        kl_rew *= kl_coef
 
-    rew = 10 * score_rew + cot_penalty_rew + kl_rew + max_gen_length_penalty_rew
+        # weight by propability of ref model having reached this token
+        ref_logprob *= output_mask
+        ref_token_props = torch.cumprod(ref_props, dim=-1)  # (bs, seqlen)
+        # normalized
+        ref_token_props = ref_token_props / ref_token_props.sum(dim=-1, keepdim=True)
+        kl_rew = kl_rew * ref_token_props * kl_coef
+
+    rew = (
+        score_rew
+        + cot_penalty_rew
+        + kl_rew
+        + max_gen_length_penalty_rew
+        + answer_trigger_present_rew
+    )
 
     # TODO: fix lambda gamma error. They are used with swapped values
     gamma = args["gamma"]
@@ -531,60 +584,8 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # original implementation:
     ret = adv + val  # (bs, seqlen)
 
-    # other implementation: returns = rewards[:, :-1] + gamma * next_values
-    # must be in shape (bs, seqlen)
-    # ret = torch.zeros(rew.shape, device=completed_tensors.device)
-    # ret[:, :-1] = rew[:, :-1] + gamma * val[:, 1:]
-
     old_logprob = old_logprob * output_mask
     cot_lengths = torch.sum(effective_cot_mask, dim=1)
-
-    # debug_sample = random.randint(0, len(batch["input_ids"]) - 1)
-
-    # accelerator.print(f"-- sample {debug_sample} --")
-    # accelerator.print(
-    #     f"input from batch: {batch['formatted_input'][debug_sample][100:200]}"
-    # )
-    # accelerator.print(
-    #     f"input from completed tensors: {tokenizer.decode(completed_tensors[debug_sample], skip_special_tokens=True)[100:200]}"
-    # )
-    # accelerator.print(f"penalty: {batch['penalty'][debug_sample]}")
-    # # accelerator.print(f"input: {batch['formatted_input'][debug_sample]}")
-    # accelerator.print(
-    #     f"input length: {torch.sum(input_mask[debug_sample])}, {len(tokenizer(batch['formatted_input'][debug_sample])['input_ids'])}"
-    # )
-    # accelerator.print(
-    #     f"input length with padding: {len(batch['input_ids'][debug_sample])}"
-    # )
-    # accelerator.print(f"target: {batch['target'][debug_sample]}")
-    # # accelerator.print(f"generated: {generated_texts[debug_sample]}")
-    # accelerator.print(f"answer: {answers[debug_sample]}")
-    # accelerator.print(f"score: {correctness[debug_sample]}")
-    # accelerator.print(
-    #     f"output length: {torch.sum(output_mask[debug_sample])}, {len(tokenizer(generated_texts[debug_sample])['input_ids'])}"
-    # )
-    # accelerator.print(
-    #     f"completed tensors length: {len(completed_tensors[debug_sample])}"
-    # )
-    # last_tok = last_completed_token[debug_sample]
-    # end = min(last_tok + 5, completed_tensors.shape[1])
-    # accelerator.print(f"last completed token: {last_tok}")
-    # accelerator.print(f"cot length: {cot_lengths[debug_sample]}")
-    # accelerator.print(
-    #     f"score reward: {score_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(score_rew[debug_sample])}, non zero: {torch.nonzero(score_rew[debug_sample])}"
-    # )
-    # accelerator.print(
-    #     f"kl reward: {kl_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(kl_rew[debug_sample])}"
-    # )
-    # accelerator.print(
-    #     f"penalty reward: {cot_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(cot_penalty_rew[debug_sample])}"
-    # )
-    # accelerator.print(
-    #     f"max len reward: {max_gen_length_penalty_rew[debug_sample, last_tok-5:end]}, sum: {torch.sum(max_gen_length_penalty_rew[debug_sample])}, non zero: {torch.nonzero(max_gen_length_penalty_rew[debug_sample])}"
-    # )
-    # accelerator.print(
-    #     f"reward: {rew[debug_sample, last_tok-5:end]}", torch.sum(rew[debug_sample])
-    # )
 
     model.train()
     return (
@@ -604,6 +605,7 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
         props,
         cot_penalty_rew,
         max_gen_length_penalty_rew,
+        answer_trigger_present_rew,
     )
 
 
@@ -658,6 +660,7 @@ def train_one_epoch(
             old_props,
             cot_penalty_rew,
             max_gen_length_penalty_rew,
+            answer_trigger_present_rew,
         ) = rollout(args, model, ref_model, tokenizer, batch, iter=global_iter_num)
         torch.distributed.barrier()
         # preprocess
@@ -681,11 +684,13 @@ def train_one_epoch(
                 "extracted answer": extracted_ans,
                 "correct answer": batch["target"],
                 "cot length": cot_lengths,
-                "answer score": correctness,
                 "score reward": torch.sum(score_rew, dim=1).tolist(),
                 "kl reward": torch.sum(kl_rew, dim=1).tolist(),
                 "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
                 "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
+                "answer present reward": torch.sum(
+                    answer_trigger_present_rew, dim=1
+                ).tolist(),
                 "total reward": reward_sums,
             }
             # # sort by length of thinking, descending
@@ -1134,8 +1139,10 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(
         args["tokenizer_name_or_path"], use_fast=True, padding_side="left"
     )
-    tokenizer.pad_token_id = 1
-    tokenizer.eos_token_id = 2
+
+    if args["add_special_token_ids"]:
+        tokenizer.pad_token_id = 1
+        tokenizer.eos_token_id = 2
 
     train_dataloader, _, test_small_dataloader = prepare_datasets_and_data_loaders(
         args, tokenizer
@@ -1356,6 +1363,10 @@ if __name__ == "__main__":
         temperature: float = field(default=1.0)
         start_penalty_after: int = field(default=0)
         penalty_warmup_steps: int = field(default=100)
+        add_special_token_ids: bool = field(default=False)
+        score_coef: float = field(default=1.0)
+        git_commit_hash: str = field(default="None")
+        git_commit_name: str = field(default="None")
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
