@@ -34,10 +34,10 @@ start_penalty_after="0"
 penalty_warmup_steps="1"
 
 ppo_epochs="2"
-mini_batch_size="40"
-eval_batch_size="70"
-batch_size="75"
-num_processes='8'
+mini_batch_size="10"
+eval_batch_size="18"
+batch_size="18"
+num_processes='2'
 
 keep_num_ckpt='0'
 n_epochs="700"

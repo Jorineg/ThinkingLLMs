@@ -39,11 +39,6 @@ load_dotenv()
 
 tqdm = partial(tqdm, ncols=0, leave=False)
 
-TIMEOUT = 10
-
-REWARD_ALLOW_NEGATIVE = True
-REWARD_MAX_GEN_LENGTH = -1
-
 IN_COL = "final_input"
 OUT_COL = "final_target"
 
@@ -54,17 +49,28 @@ answer_trigger = "Answer:"
 # cot_trigger = "Let's think step-by-step:"
 cot_trigger = f"SOLUTION:"
 
-instruction = f"""
-Solve the problem below.
-You may think step-by-step.
-To indicate your final answer, write '{answer_trigger}' followed by your answer.
-"""
-
 # instruction = f"""
-# Here is the my problem and its solution.
-# Some problems I broke down into steps.
-# The final answer is indicated with '{answer_trigger}'.
+# Solve the problem below.
+# You may think step-by-step.
+# To indicate your final answer, write '{answer_trigger}' followed by your answer.
 # """
+
+instruction = f"""
+You may solve the problem step-by-step.
+
+{problem_prefix}
+Given the premise below, is the hypothesis true? Respond with 'entailment' or 'not_entailment'. Premise: The so-called "grandmother hypothesis", based on studies of African hunter-gatherer groups, suggests that infertile women are vital for successful child-rearing despite being unable to produce children themselves. Hypothesis: The "grandmother hypothesis" suggests that infertile women are very important for raising children.
+
+{cot_trigger}
+{answer_trigger}entailment
+
+{problem_prefix}
+I used all the 12/25 centimeter (cm) lengths of yarn to make a square. What is the length of one side of this square?
+
+{cot_trigger}
+12/25 cm equals 0.48 cm. All sides together are 0.48 cm long. One side is 0.48 cm divided by 4, which equals 0.12 cm.
+{answer_trigger}0.12
+"""
 # instruction = ""
 
 answer_trigger_token_count = -1
@@ -86,8 +92,12 @@ def format_input_batch(input_batch, penalties=None, answer_trigger="", outputs=N
 # takes a batch of input and completion strings
 # returns a list of completion strings
 def extract_completion_batch(input_and_completion_batch):
+    cot_trigger_count_in_instructions = instruction.count(cot_trigger)
     splitted = [res.split(cot_trigger) for res in input_and_completion_batch]
-    return [cot_trigger.join(split[1:])[1:] for split in splitted]
+    return [
+        cot_trigger.join(split[cot_trigger_count_in_instructions + 1 :])[1:]
+        for split in splitted
+    ]
 
 
 # assumes to get back only generated tokens
@@ -109,7 +119,7 @@ def check_answer(extracted_ans, target_answer):
     return 0
 
 
-def compare_and_calculate_reward(cot, target_answer, token_count=0, cot_penalty=0):
+def compare_and_calculate_reward(cot, target_answer):
     reward = 0
     if answer_trigger in cot:
         extracted_ans = extract_answer_cot_batch([cot])[0]
