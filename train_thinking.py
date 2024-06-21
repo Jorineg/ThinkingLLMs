@@ -326,20 +326,27 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
             max_new_tokens=args["max_gen_length"],
         )
 
+    # input_mask = pad_across_processes(batch["attention_mask"], dim=1, pad_index=0)
+    # pad with 0s to size of completed tensors
+    completion_start_index = batch["input_ids"].shape[1]
+    padding = (0, completed_tensors.shape[1] - completion_start_index)
+    input_mask = torch.nn.functional.pad(input_mask, padding, value=0)
+
     # pad at the end
     completed_tensors = pad_across_processes(
         completed_tensors, dim=1, pad_index=tokenizer.pad_token_id
     )
 
+    input_mask = pad_across_processes(
+        input_mask, dim=1, pad_index=0
+    )
+
     # mask no padding (input output only)
     no_padding_mask = completed_tensors != tokenizer.pad_token_id
-    # mask for model input (prompt only, no padding)
-    input_mask = pad_across_processes(batch["attention_mask"], dim=1, pad_index=0)
-    # pad with 0s to size of completed tensors
-    completion_start_index = input_mask.shape[1]
-    padding = (0, completed_tensors.shape[1] - completion_start_index)
-    input_mask = torch.nn.functional.pad(input_mask, padding, value=0)
+
     input_mask = input_mask & no_padding_mask
+
+    # mask for model input (prompt only, no padding)
     # mask for model output (output only, no padding)
     output_mask = no_padding_mask & ~input_mask
     # mask for effective cot tokens (output only, no padding, no answer trigger, no answer)
