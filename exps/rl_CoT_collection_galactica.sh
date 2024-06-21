@@ -2,7 +2,6 @@
 export TOKENIZERS_PARALLELISM=True
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-git pull
 # Get the commit hash
 commit_hash=$(git rev-parse --short HEAD)
 
