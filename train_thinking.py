@@ -802,6 +802,8 @@ def train_one_epoch(
                     cur_adv, cur_mask
                 )
 
+                cur_ref_props = ref_props[b_inds].contiguous()
+
                 # TODO: WHY A SECOND FORWARD PASS?
                 # Forward current model
                 # TODO: why model.eval()???? Shouldn't it be model.train()?
@@ -868,7 +870,7 @@ def train_one_epoch(
                 vf_loss = F.mse_loss(vpreds, cur_ret)
 
                 # experimental props difference loss
-                props_diff = ((lm_probs - ref_props) ** 2).mean()
+                props_diff = ((lm_probs - cur_ref_props) ** 2).mean()
                 props_diff *= args["props_diff_coef"]
                 loss = pg_loss + vf_coef * vf_loss + props_diff
 
