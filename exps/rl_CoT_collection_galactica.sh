@@ -35,7 +35,7 @@ penalty_warmup_steps="100"
 props_diff_coef="0.1"
 
 ppo_epochs="2"
-mini_batch_size="40"
+mini_batch_size="30"
 eval_batch_size="50"
 batch_size="50"
 num_processes='1'
