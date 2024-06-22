@@ -32,7 +32,7 @@ learning_rate="1e-6"
 clip_grad_norm="1"
 start_penalty_after="2000"
 penalty_warmup_steps="100"
-props_diff_coef="1e3"
+props_diff_coef="3e5"
 
 ppo_epochs="2"
 mini_batch_size="30"
