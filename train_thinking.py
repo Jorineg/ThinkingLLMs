@@ -1,26 +1,10 @@
-# Copyright 2023 Bytedance Ltd.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-
-#     http://www.apache.org/licenses/LICENSE-2.0
-
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from datasets import (
     load_dataset,
-    load_from_disk,
     DatasetDict,
-    Dataset,
-    concatenate_datasets,
 )
 from datetime import timedelta
 from functools import partial
@@ -31,7 +15,6 @@ from src.python_engine import run_python_code, process_code
 from src.utils import (
     set_seed,
     floatify,
-    compute_ETA,
     discount_cumsum,
     do_gather,
     allgather,
@@ -43,8 +26,6 @@ from torch.utils.data import DataLoader
 import deepspeed
 from transformers import (
     AutoTokenizer,
-    AutoModelForCausalLM,
-    get_linear_schedule_with_warmup,
     get_constant_schedule_with_warmup,
 )
 from trl import AutoModelForCausalLMWithValueHead
@@ -52,8 +33,6 @@ from trl.core import masked_mean, masked_var, masked_whiten, logprobs_from_logit
 import numpy as np
 import wandb
 import shutil
-from prettytable import PrettyTable
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
