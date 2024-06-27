@@ -52,7 +52,7 @@ def setup_cot(src_name):
     global answer_trigger
     global extra_instruction_announce
     # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
-    answer_trigger = "ANSWER: "
+    answer_trigger = "ANSWER:"
     cot_trigger = f"BOT:"
     instruction = f"""
     Answer the given question.
