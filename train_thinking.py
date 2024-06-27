@@ -146,20 +146,12 @@ def check_cot_collection_answer(extracted_ans, target_answer):
 
 def compare_and_calculate_reward(cot, target_answer):
     reward = 0
-    extracted_ans = cot.split(answer_trigger)[-1]
-    if isinstance(target_answer, list):
-        reward = int(extracted_ans in target_answer)
-        if reward == 0:
-            for ans in target_answer:
-                if extracted_ans.startswith(ans):
-                    reward = 0.5
-                    break
-    else:
-        reward = int(extracted_ans == target_answer)
-        if reward == 0 and extracted_ans.startswith(target_answer):
-            reward = 0.5
+    extracted_ans = cot.split(answer_trigger)[-1] if answer_trigger in cot else ""
+    reward = int(extracted_ans == target_answer)
+    if reward == 0 and extracted_ans.startswith(target_answer):
+        reward = 0.5
 
-    if reward == 0 and len(cot.split(answer_trigger)) > 1:
+    if reward == 0 and answer_trigger in cot:
         reward = 0.01
 
     return reward
@@ -517,7 +509,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         (
             tokenized_dataset["test"],
             test_all_dataloader,
-        )
+        ),
     )
 
 
@@ -759,6 +751,7 @@ def train_one_epoch(
             if accelerator.is_main_process and args["wandb_log"]:
                 thinkings = [
                     (
+                        query,
                         program.split(answer_trigger)[0],
                         task,
                         program.split(answer_trigger)[-1],
@@ -766,7 +759,8 @@ def train_one_epoch(
                         correct,
                         score,
                     )
-                    for program, task, correct, score in zip(
+                    for query, program, task, correct, score in zip(
+                        batch["ppo_forward_kwargs"]["query"],
                         programs,
                         batch["ppo_forward_kwargs"]["tasks"],
                         batch["ppo_forward_kwargs"]["answer_values"],
@@ -775,16 +769,34 @@ def train_one_epoch(
                 ]
                 # calculate length of thinking with tokenization
                 data = []
-                for thinking, task, ans, program, correct_ans, score in thinkings:
+                for (
+                    query,
+                    thinking,
+                    task,
+                    ans,
+                    program,
+                    correct_ans,
+                    score,
+                ) in thinkings:
                     tokens = tokenizer(thinking, add_special_tokens=False)["input_ids"]
                     token_count = len(tokens)
                     wandb.log({f"cot_length/{task}": token_count}, step=global_iter_num)
                     data.append(
-                        [task, thinking, token_count, ans, program, correct_ans, score]
+                        [
+                            query,
+                            task,
+                            thinking,
+                            token_count,
+                            ans,
+                            program,
+                            correct_ans,
+                            score,
+                        ]
                     )
                 # sort by length of thinking, descending
                 data = sorted(data, key=lambda x: x[2], reverse=True)
                 columns = [
+                    "question",
                     "task",
                     "cot",
                     "length",
