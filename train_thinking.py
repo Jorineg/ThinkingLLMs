@@ -359,28 +359,10 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     # start with copy of output mask
     effective_cot_mask = output_mask.clone()
 
-    # input_mask_input = tokenizer.batch_decode(
-    #     torch.where(
-    #         input_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
-    #     ),
-    #     skip_special_tokens=False,
-    # )
-
-    # output_mask_input = tokenizer.batch_decode(
-    #     torch.where(
-    #         output_mask.bool(), completed_tensors, torch.tensor(tokenizer.pad_token_id)
-    #     ),
-    #     skip_special_tokens=False,
-    # )
-
     # Evaluate score
     completed_texts = tokenizer.batch_decode(
         completed_tensors, skip_special_tokens=True
     )
-
-    # completed_texts_with_special = tokenizer.batch_decode(
-    #     completed_tensors, skip_special_tokens=False
-    # )
 
     generated_texts = extract_completion_batch(completed_texts)
     answers = extract_answer_cot_batch(generated_texts)
@@ -394,8 +376,6 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     answer_trigger_end_tokens = []
     answer_end_token_positions = []
     for i, (answer, target) in enumerate(zip(answers, batch["target"])):
-        # effective_cot_length = torch.sum(output_mask[i]).item()
-
         # subtract answer length from cot only if answer trigger is present at least two times
         answer_length = -1
         answer_trigger_start_token = -1
@@ -534,12 +514,6 @@ def rollout(args, model, ref_model, tokenizer, batch, iter=None):
     )  # (bs, seqlen)
     props = None
     if ref_logprob is not None:
-        # Original implementation
-        # kl = old_logprob - ref_logprob  # (bs, seqlen-1)
-        # # square the kl divergence elementwise
-        # kl = kl**2
-        # kl = kl.float() * output_mask
-
         # other implementation
         props = F.softmax(lm_logits, dim=-1)
         ref_props = F.softmax(ref_lm_logits, dim=-1)
