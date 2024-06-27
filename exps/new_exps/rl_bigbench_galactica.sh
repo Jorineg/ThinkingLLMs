@@ -1,7 +1,7 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
-exp_name="bigbench_nl_galactica_125m_reft_01"
-model_dir="thinking_models/_models_outputs_rl_small/bigbench_nl_galactica_125m_reft_01"
+exp_name="CoT-Collection_nl_galactica_125m_reft_01"
+model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_galactica_125m_reft_01"
 # train_file="data/gsm8k_python_sdp.json"
 # test_file="data/gsm8k_test_set.json"
 train_file="jeggers/CoT-Collection"
