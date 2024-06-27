@@ -67,7 +67,7 @@ answer_trigger = None
 
 
 def setup_cot(src_name):
-    assert src_name in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "bigbench"]
+    assert src_name in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "CoT-Collection"]
     global instruction
     global cot_trigger
     global answer_trigger
@@ -76,22 +76,18 @@ def setup_cot(src_name):
     answer_trigger = "ANSWER:"
     cot_trigger = f"BOT:"
     instruction = f"""
-    You will be given the name of the task set,
-    the input question/statement and a list of options (empty list = no options).
-    If there are given options, answer with the best choice.
+    Answer the given question.
     You can think about the question before you answer.
     Use at most {args["max_gen_length"]} words for your thinking+answer. 
     To indicate your answer, write "{answer_trigger}" before your answer.
 
     Example 1:
     What is 1 + 1?
-    ["1", "2", "3", "4"]
     {cot_trigger}
-    this is easy. 1 + 1 is 2{answer_trigger}2
+    This is easy. 1 + 1 is 2{answer_trigger}2
 
     Example 2:
     What is the capital of France?
-    []
     {cot_trigger}{answer_trigger}Paris\n\n
     """
     extra_instruction_announce = (
@@ -101,7 +97,7 @@ def setup_cot(src_name):
 
 
 post_process_final_answer_fn_mapper = {
-    "bigbench": lambda x: x,
+    "CoT-Collection": lambda x: x,
     "gsm8k": lambda x: float(x.replace(",", "").strip()),
     "svamp": lambda x: float(x.replace(",", "").strip()),
     "mathqa": lambda x: x.lower().replace('"', "").replace("'", "").strip(),
@@ -135,20 +131,20 @@ post_process_answer_cot_fn_mapper = {
     ("nl", "mathqa-numeric"): lambda answer_cot: [
         floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
     ],
-    ("nl", "bigbench"): lambda answer_cot: [
+    ("nl", "CoT-Collection"): lambda answer_cot: [
         res.split(answer_trigger)[-1] for res in answer_cot
     ],
 }
 
 
-def check_bigbench_answer(extracted_ans, target_answer):
+def check_cot_collection_answer(extracted_ans, target_answer):
     if isinstance(target_answer, list):
         return extracted_ans in target_answer
     else:
         return extracted_ans == target_answer
 
 
-def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
+def compare_and_calculate_reward(cot, target_answer):
     reward = 0
     extracted_ans = cot.split(answer_trigger)[-1]
     if isinstance(target_answer, list):
@@ -163,13 +159,6 @@ def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
         if reward == 0 and extracted_ans.startswith(target_answer):
             reward = 0.5
 
-    if (
-        multiple_choice_targets is not None
-        and reward == 0
-        and extracted_ans in multiple_choice_targets
-    ):
-        reward = 0.1
-
     if reward == 0 and len(cot.split(answer_trigger)) > 1:
         reward = 0.01
 
@@ -177,7 +166,7 @@ def compare_and_calculate_reward(cot, target_answer, multiple_choice_targets):
 
 
 compare_answer_fn_mapper = {
-    "bigbench": check_bigbench_answer,
+    "CoT-Collection": check_cot_collection_answer,
     "gsm8k": lambda extracted_ans, target_answer: abs(extracted_ans - target_answer)
     <= 1e-2,
     "svamp": lambda extracted_ans, target_answer: abs(extracted_ans - target_answer)
@@ -337,14 +326,14 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         # raw_dataset.push_to_hub("jeggers/bigbench_small")
         # raise ValueError("Pushed to hub")
 
-        raw_dataset = load_dataset("jeggers/bigbench_small")
+        raw_dataset = load_dataset("jeggers/CoT-Collection")
         accelerator.print("Raw data:", raw_dataset)
 
         # make cot related info
         # src_name = raw_dataset["train"]["item_id"][0].split("_")[
         #     0
         # ]  # e.g., gsm8k_0, gsm8k_1, gsm8k_2, ...
-        src_name = "bigbench"
+        src_name = "CoT-Collection"
         setup_cot(src_name)
         accelerator.print("Using instruction:", instruction)
         accelerator.print("Using extra_instruction:", extra_instruction_announce)
@@ -366,34 +355,22 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 #     item["answer_value"],
                 #     item.get("answer_cot", None),
                 # )
-                inputs, targets, multiple_choice_targets, extra_instruction, task = (
-                    item["inputs"],
-                    item["targets"],
-                    item["multiple_choice_targets"],
-                    item["extra_instruction"],
-                    item["task"],
+                inputs, targets, task = (
+                    item["final_input"],
+                    item["final_target"],
+                    item["dataset"],
                 )
-
-                if extra_instruction:
-                    extra_instruction = (
-                        f"{extra_instruction_announce}{extra_instruction}\n\n"
-                    )
 
                 question = inputs.strip()
 
-                task_str = "Task name: " + task + "\n\n"
-                mc_options = (
-                    "Multiple choice options: " + str(multiple_choice_targets) + "\n\n"
-                )
-
                 # input = f"{instruction}{task_str}{extra_instruction}{question}{mc_options}{cot_trigger}"
                 # output = f"{answer_cot}"
-                prefix_text = f"{instruction}{task_str}{extra_instruction}Question:\n{question}{mc_options}{cot_trigger}"
+                prefix_text = f"{instruction}Question:\n{question}{cot_trigger}"
 
                 # Modify for particular datasets and engine
                 if (
                     src_name
-                    in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "bigbench"]
+                    in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "CoT-Collection"]
                     and args["engine"] == "python"
                 ):
                     prefix_text += f'def solution():\n    """{question}"""\n'
@@ -441,7 +418,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 # new_batch["answer_value"].append(answer_value)
                 new_batch["task"].append(task)
                 new_batch["targets"].append(targets)
-                new_batch["multiple_choice_targets"].append(multiple_choice_targets)
 
             return new_batch
 
@@ -506,9 +482,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             #     [int(item["item_id"].split("_")[1]) for item in batch]
             # ),
             "tasks": [item["task"] for item in batch],
-            "multiple_choice_targets": [
-                item["multiple_choice_targets"] for item in batch
-            ],
         }
         generate_prefix_kwargs = {
             "input_ids": torch.LongTensor(prefix_left_padded),
@@ -603,7 +576,6 @@ def rollout(
     query_tensors_attention_mask,
     answer_values,
     src_name,
-    multiple_choice_targets=None,
     tasks=None,
     iter=None,
 ):
@@ -636,8 +608,7 @@ def rollout(
     # for i, extracted_ans in enumerate(execute_fn(programs)):
     for i, cot in enumerate(programs):
         target_value = answer_values[i]
-        mc_targets = multiple_choice_targets[i]
-        reward = compare_and_calculate_reward(cot, target_value, mc_targets)
+        reward = compare_and_calculate_reward(cot, target_value)
         correctness.append(reward)
 
     model_input_ids = completed_tensors
@@ -796,10 +767,7 @@ def train_one_epoch(
                     "query_tensors_attention_mask"
                 ],
                 answer_values=batch["ppo_forward_kwargs"]["answer_values"],
-                src_name="bigbench",
-                multiple_choice_targets=batch["ppo_forward_kwargs"][
-                    "multiple_choice_targets"
-                ],
+                src_name="CoT-Collection",
                 tasks=batch["ppo_forward_kwargs"]["tasks"],
                 iter=global_iter_num,
             )
@@ -1267,7 +1235,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
     if accelerator.is_main_process and accelerator.is_local_main_process:
         # results = []
         # src_name = dataset[0]["item_id"].split("_")[0]
-        src_name = "bigbench"
+        src_name = "CoT-Collection"
         # for pred, tar, item in zip(predictions, targets, dataset):
         #     cur_res = {
         #         "item_id": item["item_id"],

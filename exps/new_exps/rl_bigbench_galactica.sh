@@ -4,7 +4,7 @@ exp_name="bigbench_nl_galactica_125m_reft_01"
 model_dir="thinking_models/_models_outputs_rl_small/bigbench_nl_galactica_125m_reft_01"
 # train_file="data/gsm8k_python_sdp.json"
 # test_file="data/gsm8k_test_set.json"
-train_file="tasksource/bigbench"
+train_file="jeggers/CoT-Collection"
 engine='nl' # 'python' or 'nl'
 
 model_name_or_path="facebook/galactica-125m"
