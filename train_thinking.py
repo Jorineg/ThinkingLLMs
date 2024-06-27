@@ -214,117 +214,11 @@ def prepare_deepspeed_ref_model(model):
 
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
-        # make raw dataset
-        # exclude_sets = [
-        #     "few_shot_nlg",
-        #     "gem",
-        #     "linguistic_mappings",
-        #     "list_functions",
-        #     "minute_mysteries_qa",
-        #     "mult_data_wrangling",
-        #     "physics_questions",
-        #     "scientific_press_release",
-        #     "semantic_parsing_in_context_sparc",
-        #     "simple_arithmetic_json_multiple_choice",
-        #     "simple_arithmetic_multiple_targets_json",
-        #     "social_support",
-        #     "tellmewhy",
-        #     "topical_chat",
-        #     "unnatural_in_context_learning",
-        # ]
 
-        # extra_instructions = {
-        #     "auto_categorization": "If the answer is Pokemon, answer with pokeman. USA is U.S",
-        #     "codenames": "The result must be a list of words with comma separated and sorted alphabetically.",
-        #     "disfl_qa": "Answer with 'unknown' if not known from the context.",
-        #     "language_games": "Every answer ends with a ., ! or ?",
-        #     "matrix_shapes": "Give the shape of the resulting matrix.",
-        #     "polish_sequence_labeling": "Everything separated by a space is considered a word.",
-        #     "qa_wikipedia": "Alway answer with a single word. If the question asks for multiple things (e.g. colors, ...) just answer with the any of the requested things.",
-        #     "reasoning_about_colored_objects": "If the answer is a number, do not spell it out, just write the number.",
-        #     "semantic_parsing_spider": "answer in all lower case",
-        # }
-
-        # def transform_strategyqa(example):
-        #     example["targets"] = [example["targets"][0].split(".")[0]]
-        #     return example
-
-        # extra_transforms = {
-        #     "strategyqa": transform_strategyqa,
-        # }
-
-        # HF_API_KEY = os.getenv("HF_API_KEY")
-        # headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-        # API_URL = f"https://datasets-server.huggingface.co/splits?dataset={args['train_file']}"
-        # response = requests.get(API_URL, headers=headers)
-        # response.raise_for_status()
-        # info = response.json()
-        # configs = set([split["config"] for split in info["splits"]])
-        # configs = [config for config in configs if config not in exclude_sets]
-
-        # max_per_task = args["max_per_task"]
-        # max_test_per_task = args["max_test_per_task"]
-
-        # train_datasets = []
-        # val_datasets = []
-        # val_small_datasets = []
-        # val_tiny_datasets = []
-        # select_columns = ["inputs", "targets", "multiple_choice_targets"]
-        # for config in tqdm(configs):
-        #     dataset = load_dataset(args["train_file"], config)
-        #     dataset = dataset.select_columns(select_columns)
-
-        #     dataset["train"] = dataset["train"].add_column(
-        #         "task", [config] * len(dataset["train"])
-        #     )
-        #     dataset["validation"] = dataset["validation"].add_column(
-        #         "task", [config] * len(dataset["validation"])
-        #     )
-        #     if config in extra_transforms:
-        #         dataset = dataset.map(extra_transforms[config])
-        #     extra_instructions_for_task = extra_instructions.get(config, "")
-        #     dataset["train"] = dataset["train"].add_column(
-        #         "extra_instruction",
-        #         [extra_instructions_for_task] * len(dataset["train"]),
-        #     )
-        #     dataset["validation"] = dataset["validation"].add_column(
-        #         "extra_instruction",
-        #         [extra_instructions_for_task] * len(dataset["validation"]),
-        #     )
-        #     train_datasets.append(
-        #         dataset["train"].select(range(min(max_per_task, len(dataset["train"]))))
-        #     )
-        #     val_datasets.append(
-        #         dataset["validation"].select(
-        #             range(min(max_test_per_task, len(dataset["validation"])))
-        #         )
-        #     )
-        #     val_small_datasets.append(
-        #         dataset["validation"].select(range(min(10, len(dataset["validation"]))))
-        #     )
-        #     val_tiny_datasets.append(
-        #         dataset["validation"].select(range(min(2, len(dataset["validation"]))))
-        #     )
-
-        # raw_dataset = DatasetDict(
-        #     {
-        #         "train": concatenate_datasets(train_datasets),
-        #         "test_all": concatenate_datasets(val_datasets),
-        #         "test_small": concatenate_datasets(val_small_datasets),
-        #         "test_tiny": concatenate_datasets(val_tiny_datasets),
-        #     }
-        # )
-
-        # raw_dataset.push_to_hub("jeggers/bigbench_small")
-        # raise ValueError("Pushed to hub")
 
         raw_dataset = load_dataset("jeggers/CoT-Collection")
         accelerator.print("Raw data:", raw_dataset)
 
-        # make cot related info
-        # src_name = raw_dataset["train"]["item_id"][0].split("_")[
-        #     0
-        # ]  # e.g., gsm8k_0, gsm8k_1, gsm8k_2, ...
         src_name = "CoT-Collection"
         setup_cot(src_name)
         accelerator.print("Using instruction:", instruction)
@@ -341,12 +235,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             all_keys = list(batch.keys())
             for item_values in zip(*(batch[k] for k in all_keys)):
                 item = {k: item_values[i] for i, k in enumerate(all_keys)}
-                # item_id, question, answer_value, answer_cot = (
-                #     item["item_id"],
-                #     item["question"],
-                #     item["answer_value"],
-                #     item.get("answer_cot", None),
-                # )
+
                 inputs, targets, task = (
                     item["final_input"],
                     item["final_target"],
@@ -355,8 +244,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
                 question = inputs.strip()
 
-                # input = f"{instruction}{task_str}{extra_instruction}{question}{mc_options}{cot_trigger}"
-                # output = f"{answer_cot}"
                 prefix_text = f"{instruction}Question:\n{question}{cot_trigger}"
 
                 # Modify for particular datasets and engine
@@ -367,47 +254,18 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 ):
                     prefix_text += f'def solution():\n    """{question}"""\n'
 
-                # input_encode = tokenizer(input, add_special_tokens=False)
-                # output_encode = tokenizer(output, add_special_tokens=False)
                 prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
                 if len(prefix_encode["input_ids"]) > args["max_input_length"]:
                     continue
 
-                # input_ids = (
-                #     input_encode["input_ids"]
-                #     + output_encode["input_ids"]
-                #     + [tokenizer.eos_token_id]
-                # )
-                # labels = (
-                #     [-100] * len(input_encode["input_ids"])
-                #     + output_encode["input_ids"]
-                #     + [tokenizer.eos_token_id]
-                # )
-                # attention_mask = [1] * len(input_ids)
+
                 prefix = prefix_encode["input_ids"]
                 prefix_attention_mask = prefix_encode["attention_mask"]
 
-                # Truncation
-                # input_ids = input_ids[: args["max_input_length"]]
-                # labels = labels[: args["max_input_length"]]
-                # attention_mask = attention_mask[: args["max_input_length"]]
-                # prefix = prefix[: args["max_input_length"]]
-                # prefix_attention_mask = prefix_attention_mask[
-                #     : args["max_input_length"]
-                # ]
-
-                ##
-                # new_batch["input_ids"].append(input_ids)
-                # new_batch["labels"].append(labels)
-                # new_batch["attention_mask"].append(attention_mask)
                 new_batch["prefix"].append(prefix)
                 new_batch["prefix_attention_mask"].append(prefix_attention_mask)
-                ##
-                # new_batch["item_id"].append(item_id)
                 new_batch["question"].append(question)
                 new_batch["prefix_text"].append(prefix_text)
-                # new_batch["answer_cot"].append(answer_cot)
-                # new_batch["answer_value"].append(answer_value)
                 new_batch["task"].append(task)
                 new_batch["targets"].append(targets)
 
@@ -443,16 +301,11 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             )
 
     def collate_fn(batch, args, tokenizer):
-        # max_target_length = max([len(item["labels"]) for item in batch])
         max_prefix_length = max([len(item["prefix"]) for item in batch])
-        # labels_left_padded = []
         prefix_left_padded = []
         prefix_attention_mask_left_padded = []
 
         for item in batch:
-            # labels_left_padded.append(
-            #     [-100] * (max_target_length - len(item["labels"])) + item["labels"]
-            # )
             prefix_left_padded.append(
                 [tokenizer.pad_token_id] * (max_prefix_length - len(item["prefix"]))
                 + item["prefix"]
@@ -468,17 +321,12 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             "query_tensors_attention_mask": torch.BoolTensor(
                 prefix_attention_mask_left_padded
             ),
-            # "answer_values": [item["answer_value"].replace(",", "") for item in batch],
             "answer_values": [item["targets"] for item in batch],
-            # "item_ids": torch.LongTensor(
-            #     [int(item["item_id"].split("_")[1]) for item in batch]
-            # ),
             "tasks": [item["task"] for item in batch],
         }
         generate_prefix_kwargs = {
             "input_ids": torch.LongTensor(prefix_left_padded),
             "attention_mask": torch.BoolTensor(prefix_attention_mask_left_padded),
-            # "labels": torch.LongTensor(labels_left_padded),
         }
 
         return {
@@ -555,7 +403,6 @@ def rollout(
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
-            # max_length=args["max_gen_length"] + args["max_input_length"],
             max_new_tokens=args["max_gen_length"],
         )
         completed_tensors = gen_output
@@ -569,7 +416,6 @@ def rollout(
     )
     programs = [text.split(cot_trigger)[-1] for text in completed_texts]
 
-    # execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
     correctness = []
     # for i, extracted_ans in enumerate(execute_fn(programs)):
     for i, cot in enumerate(programs):
@@ -620,7 +466,6 @@ def rollout(
         kl_rew[:, :-1] = -kl  # NOTE the minus sign
 
         kl_coef = args["kl_coef"]
-        # kl_coef += np.min([0.3, 1 / (np.max([1, iter]) ** 0.7)])
         if iter < 80:
             kl_coef = 0.1
         rew = score_rew + kl_coef * kl_rew
@@ -875,8 +720,6 @@ def train_one_epoch(
                         )
                         / resp_len_per_sample
                     ).mean()
-                    # pg_loss = (torch.max(pg_losses, pg_losses2) * cur_mask[:, :-1]).sum() / cur_mask[:, :-1].sum()
-                    # pg_loss = (-logprob * cur_ret[:,:-1]).sum() / cur_mask[:, :-1].sum()
 
                     # value loss
                     vpredclipped = torch.max(
@@ -902,11 +745,6 @@ def train_one_epoch(
                         loss += pg_loss + 2 * vf_loss
                     elif global_iter_num < 4 * args["no_policy_loss_steps"]:
                         loss += pg_loss + vf_loss
-                    #     loss += vf_coef * vf_loss
-                    # elif (
-                    #     global_iter_num >= args["no_policy_loss_steps"]
-                    #     and global_iter_num < 3 * args["no_policy_loss_steps"]
-                    # ):
                     else:
                         loss += pg_loss + vf_coef * vf_loss
 
@@ -923,8 +761,6 @@ def train_one_epoch(
                     std_resp_len = torch.mean(allgather(torch.std(resp_len_per_sample)))
 
                     # value related metrics
-                    # vf_expl_var_num = torch.var(torch.masked_select(cur_ret - vpreds, cur_mask.bool()))
-                    # vf_expl_var_dem = torch.var(torch.masked_select(cur_ret, cur_mask.bool()))
                     vf_expl_var_num = masked_var(cur_ret - vpreds, cur_mask)
                     vf_expl_var_dem = masked_var(cur_ret, cur_mask)
                     vf_expl_var = 1.0 - vf_expl_var_num / (vf_expl_var_dem + 1e-8)
@@ -1219,44 +1055,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
     targets = targets[: len(dataset)]
 
     if accelerator.is_main_process and accelerator.is_local_main_process:
-        # results = []
-        # src_name = dataset[0]["item_id"].split("_")[0]
         src_name = "CoT-Collection"
-        # for pred, tar, item in zip(predictions, targets, dataset):
-        #     cur_res = {
-        #         "item_id": item["item_id"],
-        #         "answer_value": item["answer_value"],
-        #     }
-        #     ## Processing target
-        #     target_cot = tar.strip().split(cot_trigger)[-1].strip()
-        #     target_value = post_process_final_answer_fn_mapper[src_name](
-        #         cur_res["answer_value"]
-        #     )
-        #     cur_res["target"] = target
-        #     cur_res["target_cot"] = target_cot
-        #     cur_res["target_value"] = target_value
-        #     ## Processing prediction
-        #     prediction_cot = pred.strip().split(cot_trigger)[-1].strip()
-        #     cur_res["prediction"] = pred
-        #     cur_res["prediction_cot"] = prediction_cot
-        #     cur_res["prediction_value"] = None  # Tobe filled
-        #     results.append(cur_res)
-
-        # execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
-        # corr_value = 0
-        # for i, prediction_value in enumerate(
-        #     execute_fn([item["prediction_cot"] for item in results])
-        # ):
-        #     target_value = results[i]["target_value"]
-        #     is_correct = (
-        #         compare_answer_fn_mapper[src_name](prediction_value, target_value)
-        #         if prediction_value is not None
-        #         else False
-        #     )
-        #     results[i]["prediction_value"] = prediction_value
-        #     results[i]["is_correct"] = is_correct
-        #     corr_value += is_correct
-
         pred_cots = [pred.split(cot_trigger)[-1].strip() for pred in predictions]
         execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
         results = []
@@ -1312,9 +1111,6 @@ def main(args):
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
     model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
-    # accelerator.print(f'[Vocab size]: {len(tokenizer)}')
-    # model.resize_token_embeddings(len(tokenizer))
-
     # initialize ref model (if any)
     ref_model = None
     if args["ref_model_name_or_path"]:
