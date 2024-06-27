@@ -504,25 +504,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
     )
 
     test_all_dataloader = DataLoader(
-        tokenized_dataset["test_all"],
-        shuffle=False,
-        batch_size=args["eval_batch_size"],
-        num_workers=args["num_workers"],
-        pin_memory=True,
-        collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
-    )
-
-    test_small_dataloader = DataLoader(
-        tokenized_dataset["test_small"],
-        shuffle=False,
-        batch_size=args["eval_batch_size"],
-        num_workers=args["num_workers"],
-        pin_memory=True,
-        collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
-    )
-
-    test_tiny_dataloader = DataLoader(
-        tokenized_dataset["test_tiny"],
+        tokenized_dataset["test"],
         shuffle=False,
         batch_size=args["eval_batch_size"],
         num_workers=args["num_workers"],
@@ -535,15 +517,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         (
             tokenized_dataset["test_all"],
             test_all_dataloader,
-        ),
-        (
-            tokenized_dataset["test_small"],
-            test_small_dataloader,
-        ),
-        (
-            tokenized_dataset["test_tiny"],
-            test_tiny_dataloader,
-        ),
+        )
     )
 
 
@@ -1322,8 +1296,6 @@ def main(args):
     (
         (train_dataset, train_dataloader),
         (test_all_dataset, test_all_dataloader),
-        (test_small_dataset, test_small_dataloader),
-        (test_tiny_dataset, test_tiny_dataloader),
     ) = prepare_datasets_and_data_loaders(args, tokenizer)
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
@@ -1374,8 +1346,8 @@ def main(args):
     scheduler = get_constant_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_step
     )
-    model, optimizer, train_dataloader, test_small_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, test_small_dataloader
+    model, optimizer, train_dataloader, test_all_dataloader = accelerator.prepare(
+        model, optimizer, train_dataloader, test_all_dataloader
     )
     if ref_model is not None:
         if accelerator.distributed_type == "DEEPSPEED":
@@ -1401,8 +1373,8 @@ def main(args):
                 "ref_model": ref_model,
                 "train_dataset": train_dataset,
                 "train_dataloader": train_dataloader,
-                "test_dataset": test_small_dataset,
-                "test_dataloader": test_small_dataloader,
+                "test_dataset": test_all_dataset,
+                "test_dataloader": test_all_dataloader,
                 "optimizer": optimizer,
                 "scheduler": scheduler,
                 "global_step": global_step,
@@ -1426,8 +1398,8 @@ def main(args):
                     for k, v in evaluate_generation(
                         args,
                         model,
-                        test_small_dataset,
-                        test_small_dataloader,
+                        test_all_dataset,
+                        test_all_dataloader,
                         tokenizer,
                     ).items()
                 }
