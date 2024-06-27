@@ -515,7 +515,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
     return (
         (tokenized_dataset["train"], train_dataloader),
         (
-            tokenized_dataset["test_all"],
+            tokenized_dataset["test"],
             test_all_dataloader,
         )
     )
