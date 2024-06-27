@@ -99,7 +99,7 @@ def compare_and_calculate_reward(cot, target_answer):
         reward = 0.5
 
     if reward == 0 and answer_trigger in cot:
-        reward = 0.01
+        reward = 0.1
 
     return reward
 
@@ -162,7 +162,6 @@ def prepare_deepspeed_ref_model(model):
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
 
-
         raw_dataset = load_dataset("jeggers/CoT-Collection")
         accelerator.print("Raw data:", raw_dataset)
 
@@ -204,7 +203,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
                 if len(prefix_encode["input_ids"]) > args["max_input_length"]:
                     continue
-
 
                 prefix = prefix_encode["input_ids"]
                 prefix_attention_mask = prefix_encode["attention_mask"]
