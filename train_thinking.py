@@ -52,7 +52,7 @@ def setup_cot(src_name):
     global answer_trigger
     global extra_instruction_announce
     # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
-    answer_trigger = "ANSWER:"
+    answer_trigger = "ANSWER: "
     cot_trigger = f"BOT:"
     instruction = f"""
     Answer the given question.
@@ -63,11 +63,12 @@ def setup_cot(src_name):
     Example 1:
     What is 1 + 1?
     {cot_trigger}
-    This is easy. 1 + 1 is 2{answer_trigger}2
+    This is easy. 1 + 1 is 2. {answer_trigger}2
 
     Example 2:
     What is the capital of France?
-    {cot_trigger}{answer_trigger}Paris\n\n
+    {cot_trigger}
+    {answer_trigger}Paris\n\n
     """
     extra_instruction_announce = (
         "Here is an extra instruction, specifically for this task:\n"
@@ -75,41 +76,8 @@ def setup_cot(src_name):
     return
 
 
-post_process_final_answer_fn_mapper = {
-    "CoT-Collection": lambda x: x,
-    "gsm8k": lambda x: float(x.replace(",", "").strip()),
-    "svamp": lambda x: float(x.replace(",", "").strip()),
-    "mathqa": lambda x: x.lower().replace('"', "").replace("'", "").strip(),
-    "mathqa-numeric": lambda x: float(x),
-}
 ### the answer_cot is a list of answer_cot
 post_process_answer_cot_fn_mapper = {
-    ("python", "gsm8k"): lambda answer_cot: [
-        floatify(res) for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("python", "svamp"): lambda answer_cot: [
-        floatify(res) for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("python", "mathqa"): lambda answer_cot: [
-        str(res).lower().replace('"', "").replace("'", "").strip()
-        for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("python", "mathqa-numeric"): lambda answer_cot: [
-        floatify(res) for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("nl", "gsm8k"): lambda answer_cot: [
-        floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
-    ],
-    ("nl", "svamp"): lambda answer_cot: [
-        floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
-    ],
-    ("nl", "mathqa"): lambda answer_cot: [
-        res.split(answer_trigger)[-1].lower().replace('"', "").replace("'", "").strip()
-        for res in answer_cot
-    ],
-    ("nl", "mathqa-numeric"): lambda answer_cot: [
-        floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
-    ],
     ("nl", "CoT-Collection"): lambda answer_cot: [
         res.split(answer_trigger)[-1] for res in answer_cot
     ],
@@ -223,7 +191,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
                 question = inputs.strip()
 
-                prefix_text = f"{instruction}Question:\n{question}{cot_trigger}"
+                prefix_text = f"{instruction}Question:\n{question}\n{cot_trigger}\n"
 
                 # Modify for particular datasets and engine
                 if (
@@ -1019,14 +987,6 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             for g in generated_ids
         ]
         predictions.extend(preds)
-        # target = [
-        #     tokenizer.decode(
-        #         t.cpu().numpy().tolist(),
-        #         skip_special_tokens=True,
-        #         clean_up_tokenization_spaces=True,
-        #     ).strip()
-        #     for t in labels
-        # ]
         target = batch["ppo_forward_kwargs"]["answer_values"]
         targets.extend(target)
 
