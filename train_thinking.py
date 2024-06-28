@@ -182,6 +182,10 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
 
         raw_dataset = load_dataset("jeggers/CoT-Collection")
+
+        # filter out first 3000 samples
+        raw_dataset["train"] = raw_dataset["train"].select(list(range(3000, len(raw_dataset["train"]))))
+
         accelerator.print("Raw data:", raw_dataset)
 
         src_name = "CoT-Collection"
