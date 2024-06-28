@@ -1,15 +1,15 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
-exp_name="CoT-Collection_nl_galactica_125m_reft_01"
+exp_name="CoT-Collection_nl_galactica_125m_reft_ft"
 model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_galactica_125m_reft_01"
 # train_file="data/gsm8k_python_sdp.json"
 # test_file="data/gsm8k_test_set.json"
 train_file="jeggers/CoT-Collection"
 engine='nl' # 'python' or 'nl'
 
-model_name_or_path="facebook/galactica-125m"
-tokenizer_name_or_path="facebook/galactica-125m"
-ref_model_name_or_path="facebook/galactica-125m"
+model_name_or_path="jeggers/galactica-125m-cot"
+tokenizer_name_or_path="jeggers/galactica-125m-cot"
+ref_model_name_or_path="jeggers/galactica-125m-cot"
 
 max_per_task=100
 max_test_per_task=100
@@ -36,8 +36,8 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="280"
-max_gen_length="70"
+max_input_length="200"
+max_gen_length="150"
 wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
