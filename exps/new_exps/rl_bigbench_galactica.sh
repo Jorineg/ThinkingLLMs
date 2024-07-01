@@ -1,5 +1,6 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 exp_name="CoT-Collection_nl_galactica_125m_reft_01"
 model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_galactica_125m_reft_01"
 # train_file="data/gsm8k_python_sdp.json"
