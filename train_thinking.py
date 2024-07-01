@@ -211,7 +211,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
                 question = inputs.strip()
 
-                prefix_text = f"{instruction}Question:\n{question}{cot_trigger}"
+                prefix_text = f"{instruction}{question}\n{cot_trigger}"
 
                 # Modify for particular datasets and engine
                 if (
