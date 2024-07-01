@@ -36,8 +36,8 @@ props_diff_coef="0"
 
 ppo_epochs="2"
 mini_batch_size="64"
-eval_batch_size="128"
-batch_size="128"
+eval_batch_size="100"
+batch_size="100"
 num_processes='1'
 
 keep_num_ckpt='0'
