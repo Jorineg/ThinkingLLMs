@@ -44,10 +44,10 @@ OUT_COL = "final_target"
 
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
-answer_trigger = "Answer:"
+answer_trigger = "ANSWER: "
 # must not be present in the problem text
 # cot_trigger = "Let's think step-by-step:"
-cot_trigger = f"SOLUTION:"
+cot_trigger = f"BOT: "
 
 # instruction = f"""
 # Solve the problem below.
@@ -55,23 +55,23 @@ cot_trigger = f"SOLUTION:"
 # To indicate your final answer, write '{answer_trigger}' followed by your answer.
 # """
 
-instruction = f"""
-You may solve the problem step-by-step.
+# instruction = f"""
+# You may solve the problem step-by-step.
 
-{problem_prefix}
-Given the premise below, is the hypothesis true? Respond with 'entailment' or 'not_entailment'. Premise: The so-called "grandmother hypothesis", based on studies of African hunter-gatherer groups, suggests that infertile women are vital for successful child-rearing despite being unable to produce children themselves. Hypothesis: The "grandmother hypothesis" suggests that infertile women are very important for raising children.
+# {problem_prefix}
+# Given the premise below, is the hypothesis true? Respond with 'entailment' or 'not_entailment'. Premise: The so-called "grandmother hypothesis", based on studies of African hunter-gatherer groups, suggests that infertile women are vital for successful child-rearing despite being unable to produce children themselves. Hypothesis: The "grandmother hypothesis" suggests that infertile women are very important for raising children.
 
-{cot_trigger}
-{answer_trigger}entailment</s>
+# {cot_trigger}
+# {answer_trigger}entailment</s>
 
-{problem_prefix}
-I used all the 12/25 centimeter (cm) lengths of yarn to make a square. What is the length of one side of this square?
+# {problem_prefix}
+# I used all the 12/25 centimeter (cm) lengths of yarn to make a square. What is the length of one side of this square?
 
-{cot_trigger}
-12/25 cm equals 0.48 cm. All sides together are 0.48 cm long. One side is 0.48 cm divided by 4, which equals 0.12 cm.
-{answer_trigger}0.12</s>
-"""
-# instruction = ""
+# {cot_trigger}
+# 12/25 cm equals 0.48 cm. All sides together are 0.48 cm long. One side is 0.48 cm divided by 4, which equals 0.12 cm.
+# {answer_trigger}0.12</s>
+# """
+instruction = ""
 
 answer_trigger_token_count = -1
 
@@ -84,7 +84,7 @@ def format_input_batch(input_batch, penalties=None, answer_trigger="", outputs=N
         outputs = [""] * len(input_batch)
 
     return [
-        f"{penalty_trigger} {penalty:.5f}\n{instruction}\n\n{problem_prefix}\n{input}\n\n{cot_trigger}\n{answer_trigger}{output}"
+        f"{penalty_trigger} {penalty:.5f}\n{instruction}{input}\n{cot_trigger}{answer_trigger}{output}"
         for input, output, penalty in zip(input_batch, outputs, penalties)
     ]
 
