@@ -969,7 +969,7 @@ def train_one_epoch(
                             "loss/loss:": loss,
                             "loss/pg_loss": pg_loss,
                             "loss/vf_loss": vf_loss,
-                            "loss/props_diff": props_diff,
+                            # "loss/props_diff": props_diff,
                             "tokens/mean_query_len": mean_query_len,
                             "tokens/std_query_len": std_query_len,
                             "tokens/mean_resp_len": mean_resp_len,
