@@ -807,32 +807,31 @@ def train_one_epoch(
                         # - lr_scheduler step (only if engine.lr_scheduler is not None)
                         accelerator.deepspeed_engine_wrapped.engine.step()
                     # else:
+                    # policy_update_steps = args["policy_update_steps"]
+                    # if global_step % policy_update_steps == 0:
+                    #     accelerator.print("Policy model update")
+                    #     accelerator.backward(pg_loss)
+                    #     policy_model_total_grad_norm = -1.0
+                    #     if clip_grad_norm is not None:
+                    #         policy_model_total_grad_norm = accelerator.clip_grad_norm_(
+                    #             policy_model.parameters(), clip_grad_norm
+                    #         )
+                    #     # optimizer.step()
+                    #     # model.zero_grad()
+                    #     # optimizer.zero_grad()
+                    #     policy_model_optimizer.step()
+                    #     policy_model.zero_grad()
+                    #     policy_model_optimizer.zero_grad()
 
-                    policy_update_steps = args["policy_update_steps"]
-                    if global_step % policy_update_steps == 0:
-                        accelerator.print("Policy model update")
-                        accelerator.backward(pg_loss)
-                        policy_model_total_grad_norm = -1.0
-                        if clip_grad_norm is not None:
-                            policy_model_total_grad_norm = accelerator.clip_grad_norm_(
-                                policy_model.parameters(), clip_grad_norm
-                            )
-                        # optimizer.step()
-                        # model.zero_grad()
-                        # optimizer.zero_grad()
-                        policy_model_optimizer.step()
-                        policy_model.zero_grad()
-                        policy_model_optimizer.zero_grad()
-
-                    accelerator.backward(vf_loss)
-                    value_model_total_grad_norm = -1.0
-                    if clip_grad_norm is not None:
-                        value_model_total_grad_norm = accelerator.clip_grad_norm_(
-                            value_model.parameters(), clip_grad_norm
-                        )
-                    value_model_optimizer.step()
-                    value_model.zero_grad()
-                    value_model_optimizer.zero_grad()
+                    # accelerator.backward(vf_loss)
+                    # value_model_total_grad_norm = -1.0
+                    # if clip_grad_norm is not None:
+                    #     value_model_total_grad_norm = accelerator.clip_grad_norm_(
+                    #         value_model.parameters(), clip_grad_norm
+                    #     )
+                    # value_model_optimizer.step()
+                    # value_model.zero_grad()
+                    # value_model_optimizer.zero_grad()
 
                     # Update running stats
                     n_correct, total = do_gather([sum(correctness), len(correctness)])
