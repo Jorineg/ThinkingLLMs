@@ -1303,7 +1303,9 @@ def main(args):
 
             if eval_log_dict or train_log_dict:
                 log_dict = {
-                    "lr": scheduler.get_last_lr()[0],
+                    # "lr": scheduler.get_last_lr()[0],
+                    "pg_lr": policy_model_scheduler.get_last_lr()[0],
+                    "vf_lr": value_model_scheduler.get_last_lr()[0],
                     **train_log_dict,
                     **eval_log_dict,
                     **best_eval_log_dict,
@@ -1328,6 +1330,7 @@ def main(args):
                 )
 
             if saving_epoch_freq is not None and epoch % saving_epoch_freq == 0:
+                raise Exception("Do not save models! Never!")
                 if is_best:
                     save_path = os.path.join(model_dir, f"best")
                     do_checkpoint(args, model, tokenizer, save_path)
