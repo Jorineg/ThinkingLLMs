@@ -32,7 +32,7 @@ lam="0.95"
 adv_whitening='global'
 evaluating_epoch_freq="1"
 logging_epoch_freq="1"
-saving_epoch_freq="1"
+saving_epoch_freq="-100"
 evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
@@ -42,6 +42,7 @@ max_gen_length="70"
 wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
+policy_update_steps='10'
 
 num_processes='1'
 main_process_port='8889'
@@ -90,5 +91,6 @@ accelerate launch \
             --keep_num_ckpt "${keep_num_ckpt}" \
             --max_per_task "${max_per_task}" \
             --no_policy_loss_steps "${no_policy_loss_steps}" \
+            --policy_update_steps "${policy_update_steps}" \
             1> >(tee "${model_dir}"/"${exp_name}".log) \
             2> >(tee "${model_dir}"/"${exp_name}".err >&2)

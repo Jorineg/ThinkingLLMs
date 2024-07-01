@@ -807,18 +807,21 @@ def train_one_epoch(
                         # - lr_scheduler step (only if engine.lr_scheduler is not None)
                         accelerator.deepspeed_engine_wrapped.engine.step()
                     # else:
-                    accelerator.backward(pg_loss)
-                    policy_model_total_grad_norm = -1.0
-                    if clip_grad_norm is not None:
-                        policy_model_total_grad_norm = accelerator.clip_grad_norm_(
-                            policy_model.parameters(), clip_grad_norm
-                        )
-                    # optimizer.step()
-                    # model.zero_grad()
-                    # optimizer.zero_grad()
-                    policy_model_optimizer.step()
-                    policy_model.zero_grad()
-                    policy_model_optimizer.zero_grad()
+
+                    policy_update_steps = args["policy_update_steps"]
+                    if global_iter_num % policy_update_steps == 0:
+                        accelerator.backward(pg_loss)
+                        policy_model_total_grad_norm = -1.0
+                        if clip_grad_norm is not None:
+                            policy_model_total_grad_norm = accelerator.clip_grad_norm_(
+                                policy_model.parameters(), clip_grad_norm
+                            )
+                        # optimizer.step()
+                        # model.zero_grad()
+                        # optimizer.zero_grad()
+                        policy_model_optimizer.step()
+                        policy_model.zero_grad()
+                        policy_model_optimizer.zero_grad()
 
                     accelerator.backward(vf_loss)
                     value_model_total_grad_norm = -1.0
@@ -871,8 +874,12 @@ def train_one_epoch(
                                 "nn/policy_model_total_param_norm": policy_model_total_param_norm,
                                 "nn/value_model_total_grad_norm": value_model_total_grad_norm,
                                 "nn/value_model_total_param_norm": value_model_total_param_norm,
-                                "nn/policy_model_lr": policy_model_scheduler.get_last_lr()[0],
-                                "nn/value_model_lr": value_model_scheduler.get_last_lr()[0],
+                                "nn/policy_model_lr": policy_model_scheduler.get_last_lr()[
+                                    0
+                                ],
+                                "nn/value_model_lr": value_model_scheduler.get_last_lr()[
+                                    0
+                                ],
                             },
                             step=global_iter_num,
                         )
@@ -1400,6 +1407,7 @@ if __name__ == "__main__":
         max_per_task: int = field(default=1000)
         max_test_per_task: int = field(default=100)
         no_policy_loss_steps: int = field(default=0)
+        policy_update_steps: int = field(default=1)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
