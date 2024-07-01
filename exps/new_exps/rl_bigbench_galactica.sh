@@ -10,6 +10,7 @@ engine='nl' # 'python' or 'nl'
 model_name_or_path="facebook/galactica-125m"
 tokenizer_name_or_path="facebook/galactica-125m"
 ref_model_name_or_path="facebook/galactica-125m"
+value_model_name_or_path="facebook/galactica-125m"
 
 max_per_task=100
 max_test_per_task=100
@@ -48,13 +49,14 @@ no_policy_loss_steps=30
 
 mkdir -p "${model_dir}"
 accelerate launch \
-            --config_file ./default_config_deepspeed.yaml \
+            --config_file ./default_config.yaml \
             --num_processes=${num_processes} \
             --main_process_port=${main_process_port} \
     train_thinking.py \
             --model_name_or_path "${model_name_or_path}" \
             --tokenizer_name_or_path "${tokenizer_name_or_path}" \
             --ref_model_name_or_path "${ref_model_name_or_path}" \
+            --value_model_name_or_path "${value_model_name_or_path}" \
             --train_file "${train_file}" \
             --test_file "${test_file}" \
             --model_dir "${model_dir}" \

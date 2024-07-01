@@ -26,6 +26,7 @@ from torch.utils.data import DataLoader
 import deepspeed
 from transformers import (
     AutoTokenizer,
+    AutoModelForCausalLM,
     get_constant_schedule_with_warmup,
 )
 from trl import AutoModelForCausalLMWithValueHead
@@ -194,7 +195,6 @@ def prepare_deepspeed_ref_model(model):
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
 
-
         raw_dataset = load_dataset("jeggers/CoT-Collection")
         accelerator.print("Raw data:", raw_dataset)
 
@@ -236,7 +236,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
                 if len(prefix_encode["input_ids"]) > args["max_input_length"]:
                     continue
-
 
                 prefix = prefix_encode["input_ids"]
                 prefix_attention_mask = prefix_encode["attention_mask"]
@@ -362,7 +361,8 @@ def do_checkpoint(args, model, tokenizer, save_path, most_recent_ckpts_paths=Non
 
 def rollout(
     args,
-    model,
+    policy_model,
+    value_model,
     ref_model,
     tokenizer,
     query_tensors,
@@ -372,9 +372,9 @@ def rollout(
     tasks=None,
     iter=None,
 ):
-    model.eval()
+    policy_model.eval()
     with torch.no_grad():
-        gen_output = accelerator.unwrap_model(model).generate(
+        gen_output = accelerator.unwrap_model(policy_model).generate(
             input_ids=query_tensors,
             attention_mask=query_tensors_attention_mask,
             top_k=0.0,
@@ -406,9 +406,19 @@ def rollout(
     model_attention_mask = completed_tensors != tokenizer.pad_token_id
     with torch.no_grad():
         # Get old logprob and val
-        lm_logits, _, val = model(
+        # lm_logits, _, val = model(
+        #     input_ids=model_input_ids, attention_mask=model_attention_mask
+        # )
+
+        lm_logits = policy_model(
+            input_ids=model_input_ids, attention_mask=model_attention_mask
+        ).logits
+
+        value_model.eval()
+        _, _, val = value_model(
             input_ids=model_input_ids, attention_mask=model_attention_mask
         )
+
         old_logprob = logprobs_from_logits(
             lm_logits[:, :-1, :], labels=model_input_ids[:, 1:]
         )  # (bs, seqlen-1)
@@ -478,7 +488,9 @@ def rollout(
     adv = torch.tensor(adv, device=mask.device, dtype=old_logprob.dtype) * mask
     old_logprob = old_logprob * mask[:, :-1]
 
-    model.train()
+    # model.train()
+    policy_model.train()
+    value_model.train()
     return (
         model_input_ids,
         model_attention_mask,
@@ -498,12 +510,15 @@ def rollout(
 
 def train_one_epoch(
     args,
-    model,
+    policy_model,
+    value_model,
     ref_model,
     train_dataset,
     train_dataloader,
-    optimizer,
-    scheduler,
+    policy_model_optimizer,
+    value_model_optimizer,
+    policy_model_scheduler,
+    value_model_scheduler,
     tokenizer,
     global_step,
     global_iter_num,
@@ -521,7 +536,8 @@ def train_one_epoch(
     evaluating_step_freq = args.get("evaluating_step_freq", None)
     logging_step_freq = args.get("logging_step_freq", None)
     saving_step_freq = args.get("saving_step_freq", None)
-    model.train()
+    policy_model.train()
+    value_model.train()
     epoch_result_dict = defaultdict(list)
     with tqdm(
         enumerate(train_dataloader),
@@ -532,7 +548,8 @@ def train_one_epoch(
         for idx, batch in t:
             result_dict = defaultdict(list)
             # Do rollout first
-            model.eval()
+            policy_model.eval()
+            value_model.eval()
             (
                 model_input_ids,
                 model_attention_mask,
@@ -549,7 +566,8 @@ def train_one_epoch(
                 programs,
             ) = rollout(
                 args,
-                model,
+                policy_model,
+                value_model,
                 ref_model,
                 tokenizer,
                 query_tensors=batch["ppo_forward_kwargs"]["query_tensors"],
@@ -561,7 +579,8 @@ def train_one_epoch(
                 tasks=batch["ppo_forward_kwargs"]["tasks"],
                 iter=global_iter_num,
             )
-            model.train()
+            policy_model.train()
+            value_model.train()
             # preprocess
             if args["adv_whitening"] == "global":
                 adv = allgather_masked_whiten(adv, mask)  # (mini_bs, seqlen)
@@ -675,17 +694,24 @@ def train_one_epoch(
                     )
 
                     # Forward current model
-                    model.eval()
-                    lm_logits, _, vpreds = model(
+                    # model.eval()
+                    policy_model.eval()
+                    value_model.eval()
+
+                    # get logits and values from different models
+                    lm_logits = policy_model(
+                        input_ids=cur_model_input_ids,
+                        attention_mask=cur_model_attention_mask,
+                    ).logits
+
+                    _, _, vpreds = value_model(
                         input_ids=cur_model_input_ids,
                         attention_mask=cur_model_attention_mask,
                     )
+
                     logprob = logprobs_from_logits(
                         lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
                     )  # (mini_bs, seqlen-1)
-
-                    # Compute losses
-                    loss = 0
 
                     # policy gradient loss
                     ratio = torch.exp(logprob - cur_old_logprob)
@@ -714,18 +740,6 @@ def train_one_epoch(
                         ).mean()
                     )
                     # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
-
-                    # total loss
-                    if global_iter_num < args["no_policy_loss_steps"]:
-                        loss += pg_loss + 10 * vf_loss
-                    elif global_iter_num < 2 * args["no_policy_loss_steps"]:
-                        loss += pg_loss + 5 * vf_loss
-                    elif global_iter_num < 3 * args["no_policy_loss_steps"]:
-                        loss += pg_loss + 2 * vf_loss
-                    elif global_iter_num < 4 * args["no_policy_loss_steps"]:
-                        loss += pg_loss + vf_loss
-                    else:
-                        loss += pg_loss + vf_coef * vf_loss
 
                     # token related metrics
                     mean_query_len = torch.mean(
@@ -767,9 +781,12 @@ def train_one_epoch(
                         mean_seq_kl = torch.mean(seq_kl)
 
                     # Update
-                    epoch_result_dict["loss"].append(loss.item())
+                    # epoch_result_dict["loss"].append(loss.item())
+                    epoch_result_dict["pg_loss"].append(pg_loss.item())
+                    epoch_result_dict["vf_loss"].append(vf_loss.item())
 
                     if accelerator.distributed_type == "DEEPSPEED":
+                        raise Exception("Do not use DEEPSPEED with PPO")
                         accelerator.deepspeed_engine_wrapped.engine.backward(loss)
                         total_grad_norm = 0.0
                         for n, p in model.named_parameters():
@@ -789,16 +806,29 @@ def train_one_epoch(
                         # - checking overflow
                         # - lr_scheduler step (only if engine.lr_scheduler is not None)
                         accelerator.deepspeed_engine_wrapped.engine.step()
-                    else:
-                        accelerator.backward(loss)
-                        total_grad_norm = -1.0
-                        if clip_grad_norm is not None:
-                            total_grad_norm = accelerator.clip_grad_norm_(
-                                model.parameters(), clip_grad_norm
-                            )
-                    optimizer.step()
-                    model.zero_grad()
-                    optimizer.zero_grad()
+                    # else:
+                    accelerator.backward(pg_loss)
+                    policy_model_total_grad_norm = -1.0
+                    if clip_grad_norm is not None:
+                        policy_model_total_grad_norm = accelerator.clip_grad_norm_(
+                            policy_model.parameters(), clip_grad_norm
+                        )
+                    # optimizer.step()
+                    # model.zero_grad()
+                    # optimizer.zero_grad()
+                    policy_model_optimizer.step()
+                    policy_model.zero_grad()
+                    policy_model_optimizer.zero_grad()
+
+                    accelerator.backward(vf_loss)
+                    value_model_total_grad_norm = -1.0
+                    if clip_grad_norm is not None:
+                        value_model_total_grad_norm = accelerator.clip_grad_norm_(
+                            value_model.parameters(), clip_grad_norm
+                        )
+                    value_model_optimizer.step()
+                    value_model.zero_grad()
+                    value_model_optimizer.zero_grad()
 
                     # Update running stats
                     n_correct, total = do_gather([sum(correctness), len(correctness)])
@@ -814,24 +844,35 @@ def train_one_epoch(
 
                     total_param_norm = 0.0
                     if accelerator.distributed_type == "DEEPSPEED":
+                        raise Exception("Do not use DEEPSPEED with PPO")
                         for n, p in model.named_parameters():
                             cur_param = deepspeed.utils.safe_get_full_fp32_param(
                                 p
                             ).view(-1)
                             total_param_norm += torch.norm(cur_param, 2) ** 2
                         total_param_norm = total_param_norm**0.5
-                    else:
-                        total_param_norm = torch.norm(
-                            torch.cat([p.view(-1) for p in model.parameters()]),
-                            p=2,  # L2 norm
-                        )
+                    # else:
+                    policy_model_total_param_norm = torch.norm(
+                        torch.cat([p.view(-1) for p in policy_model.parameters()]),
+                        p=2,  # L2 norm
+                    )
+                    value_model_total_param_norm = torch.norm(
+                        torch.cat([p.view(-1) for p in value_model.parameters()]),
+                        p=2,  # L2 norm
+                    )
                     # logging
                     if accelerator.is_main_process and args["wandb_log"]:
                         wandb.log(
                             {
-                                "nn/total_grad_norm": total_grad_norm,
-                                "nn/total_param_norm": total_param_norm,
-                                "nn/lr": scheduler.get_last_lr()[0],
+                                # "nn/total_grad_norm": total_grad_norm,
+                                # "nn/total_param_norm": total_param_norm,
+                                # "nn/lr": scheduler.get_last_lr()[0],
+                                "nn/policy_model_total_grad_norm": policy_model_total_grad_norm,
+                                "nn/policy_model_total_param_norm": policy_model_total_param_norm,
+                                "nn/value_model_total_grad_norm": value_model_total_grad_norm,
+                                "nn/value_model_total_param_norm": value_model_total_param_norm,
+                                "nn/policy_model_lr": policy_model_scheduler.get_last_lr()[0],
+                                "nn/value_model_lr": value_model_scheduler.get_last_lr()[0],
                             },
                             step=global_iter_num,
                         )
@@ -845,7 +886,7 @@ def train_one_epoch(
                         )
                         wandb.log(
                             {
-                                "loss/loss:": loss,
+                                # "loss/loss:": loss,
                                 "loss/pg_loss": pg_loss,
                                 "loss/vf_loss": vf_loss,
                             },
@@ -886,10 +927,14 @@ def train_one_epoch(
                     # torch.distributed.barrier()
                     global_iter_num += 1
 
-            scheduler.step()
+            # scheduler.step()
+            policy_model_scheduler.step()
+            value_model_scheduler.step()
             global_step += 1
             # Step update metric
-            epoch_result_dict["loss"].append(loss.item())
+            # epoch_result_dict["loss"].append(loss.item())
+            epoch_result_dict["pg_loss"].append(pg_loss.item())
+            epoch_result_dict["vf_loss"].append(vf_loss.item())
             for k, v in train_stats.items():
                 epoch_result_dict[k].append(v)
 
@@ -903,7 +948,7 @@ def train_one_epoch(
                 evaluate_result_dict = {
                     f"Eval.Gen.{k}": v
                     for k, v in evaluate_generation(
-                        args, model, test_dataset, test_dataloader, tokenizer
+                        args, policy_model, test_dataset, test_dataloader, tokenizer
                     ).items()
                 }
                 eval_log_dict.update(evaluate_result_dict)
@@ -930,7 +975,9 @@ def train_one_epoch(
 
             if eval_log_dict or train_log_dict:
                 log_dict = {
-                    "lr": scheduler.get_last_lr()[0],
+                    # "lr": scheduler.get_last_lr()[0],
+                    "pg_lr": policy_model_scheduler.get_last_lr()[0],
+                    "vf_lr": value_model_scheduler.get_last_lr()[0],
                     **train_log_dict,
                     **eval_log_dict,
                     **best_eval_log_dict,
@@ -951,6 +998,7 @@ def train_one_epoch(
 
             # Step saving
             if saving_step_freq is not None and global_step % saving_step_freq == 0:
+                raise Exception("Do not save models! Never!")
                 if is_best:
                     save_path = os.path.join(model_dir, f"best")
                     do_checkpoint(args, model, tokenizer, save_path)
@@ -1088,8 +1136,10 @@ def main(args):
         (test_all_dataset, test_all_dataloader),
     ) = prepare_datasets_and_data_loaders(args, tokenizer)
 
-    MODEL_CLASS = AutoModelForCausalLMWithValueHead
-    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
+    policy_model = AutoModelForCausalLM.from_pretrained(args["model_name_or_path"])
+    value_model = AutoModelForCausalLMWithValueHead.from_pretrained(
+        args["value_model_name_or_path"]
+    )
     # initialize ref model (if any)
     ref_model = None
     if args["ref_model_name_or_path"]:
@@ -1107,11 +1157,11 @@ def main(args):
         if args["warmup_step"] is not None and args["warmup_step"] >= 0
         else int(0.1 * num_training_steps)
     )
-    optimizer_grouped_parameters = [
+    optimizer_grouped_parameters_policy_model = [
         {
             "params": [
                 p
-                for n, p in model.named_parameters()
+                for n, p in policy_model.named_parameters()
                 if not any(nd in n for nd in ["bias", "LayerNorm.weight"])
             ],
             "weight_decay": args["weight_decay"],
@@ -1119,22 +1169,59 @@ def main(args):
         {
             "params": [
                 p
-                for n, p in model.named_parameters()
+                for n, p in policy_model.named_parameters()
                 if any(nd in n for nd in ["bias", "LayerNorm.weight"])
             ],
             "weight_decay": 0.0,
         },
     ]
 
-    optimizer = torch.optim.AdamW(
-        optimizer_grouped_parameters, lr=args["learning_rate"], eps=1e-8
+    optimizer_grouped_parameters_value_model = [
+        {
+            "params": [
+                p
+                for n, p in value_model.named_parameters()
+                if not any(nd in n for nd in ["bias", "LayerNorm.weight"])
+            ],
+            "weight_decay": args["weight_decay"],
+        },
+        {
+            "params": [
+                p
+                for n, p in value_model.named_parameters()
+                if any(nd in n for nd in ["bias", "LayerNorm.weight"])
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
+
+    policy_model_optimizer = torch.optim.AdamW(
+        optimizer_grouped_parameters_policy_model, lr=args["learning_rate"], eps=1e-8
+    )
+    value_model_optimizer = torch.optim.AdamW(
+        optimizer_grouped_parameters_value_model, lr=args["learning_rate"], eps=1e-8
     )
     # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=num_training_steps)
-    scheduler = get_constant_schedule_with_warmup(
-        optimizer, num_warmup_steps=warmup_step
+    policy_model_scheduler = get_constant_schedule_with_warmup(
+        policy_model_optimizer, num_warmup_steps=warmup_step
     )
-    model, optimizer, train_dataloader, test_all_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, test_all_dataloader
+    value_model_scheduler = get_constant_schedule_with_warmup(
+        value_model_optimizer, num_warmup_steps=warmup_step
+    )
+    (
+        value_model,
+        policy_model,
+        value_model_optimizer,
+        policy_model_optimizer,
+        train_dataloader,
+        test_all_dataloader,
+    ) = accelerator.prepare(
+        value_model,
+        policy_model,
+        value_model_optimizer,
+        policy_model_optimizer,
+        train_dataloader,
+        test_all_dataloader,
     )
     if ref_model is not None:
         if accelerator.distributed_type == "DEEPSPEED":
@@ -1156,14 +1243,17 @@ def main(args):
         for epoch in t:
             kwargs = {
                 "args": args,
-                "model": model,
+                "policy_model": policy_model,
+                "value_model": value_model,
                 "ref_model": ref_model,
                 "train_dataset": train_dataset,
                 "train_dataloader": train_dataloader,
                 "test_dataset": test_all_dataset,
                 "test_dataloader": test_all_dataloader,
-                "optimizer": optimizer,
-                "scheduler": scheduler,
+                "value_model_optimizer": value_model_optimizer,
+                "policy_model_optimizer": policy_model_optimizer,
+                "value_model_scheduler": value_model_scheduler,
+                "policy_model_scheduler": policy_model_scheduler,
                 "global_step": global_step,
                 "global_iter_num": global_iter_num,
                 "tokenizer": tokenizer,
@@ -1184,7 +1274,7 @@ def main(args):
                     f"Eval.Gen.{k}": v
                     for k, v in evaluate_generation(
                         args,
-                        model,
+                        policy_model,
                         test_all_dataset,
                         test_all_dataloader,
                         tokenizer,
@@ -1264,6 +1354,7 @@ if __name__ == "__main__":
     @dataclass
     class Arguments:
         model_name_or_path: str
+        value_model_name_or_path: str
         tokenizer_name_or_path: str
         model_dir: str
         train_file: str
