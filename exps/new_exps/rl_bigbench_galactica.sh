@@ -42,7 +42,7 @@ max_gen_length="70"
 wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
-policy_update_steps='10'
+policy_update_steps='20'
 
 num_processes='1'
 main_process_port='8889'
