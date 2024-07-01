@@ -811,7 +811,7 @@ def train_one_epoch(
                     # if global_step % policy_update_steps == 0:
                     #     accelerator.print("Policy model update")
                     #     accelerator.backward(pg_loss)
-                    #     policy_model_total_grad_norm = -1.0
+                    policy_model_total_grad_norm = -1.0
                     #     if clip_grad_norm is not None:
                     #         policy_model_total_grad_norm = accelerator.clip_grad_norm_(
                     #             policy_model.parameters(), clip_grad_norm
@@ -824,7 +824,7 @@ def train_one_epoch(
                     #     policy_model_optimizer.zero_grad()
 
                     # accelerator.backward(vf_loss)
-                    # value_model_total_grad_norm = -1.0
+                    value_model_total_grad_norm = -1.0
                     # if clip_grad_norm is not None:
                     #     value_model_total_grad_norm = accelerator.clip_grad_norm_(
                     #         value_model.parameters(), clip_grad_norm
