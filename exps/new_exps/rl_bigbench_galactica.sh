@@ -8,9 +8,9 @@ model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_galactica_
 train_file="jeggers/CoT-Collection"
 engine='nl' # 'python' or 'nl'
 
-model_name_or_path="facebook/galactica-125m"
-tokenizer_name_or_path="facebook/galactica-125m"
-ref_model_name_or_path="facebook/galactica-125m"
+model_name_or_path="jeggers/galactica-125m-cot"
+tokenizer_name_or_path="jeggers/galactica-125m-cot"
+ref_model_name_or_path="jeggers/galactica-125m-cot"
 value_model_name_or_path="facebook/galactica-125m"
 
 max_per_task=100
@@ -43,7 +43,7 @@ max_gen_length="70"
 wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
-policy_update_steps='5'
+policy_update_steps='1'
 
 num_processes='1'
 main_process_port='8889'

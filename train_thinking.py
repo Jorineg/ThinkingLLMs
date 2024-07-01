@@ -53,23 +53,9 @@ def setup_cot(src_name):
     global answer_trigger
     global extra_instruction_announce
     # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
-    answer_trigger = "ANSWER:"
-    cot_trigger = f"BOT:"
-    instruction = f"""
-    Answer the given question.
-    You can think about the question before you answer.
-    Use at most {args["max_gen_length"]} words for your thinking+answer. 
-    To indicate your answer, write "{answer_trigger}" before your answer.
-
-    Example 1:
-    What is 1 + 1?
-    {cot_trigger}
-    This is easy. 1 + 1 is 2{answer_trigger}2
-
-    Example 2:
-    What is the capital of France?
-    {cot_trigger}{answer_trigger}Paris\n\n
-    """
+    answer_trigger = "ANSWER: "
+    cot_trigger = f"BOT: "
+    instruction = f""
     extra_instruction_announce = (
         "Here is an extra instruction, specifically for this task:\n"
     )
