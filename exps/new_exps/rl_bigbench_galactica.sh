@@ -13,7 +13,7 @@ ref_model_name_or_path="jeggers/galactica-125m-cot"
 
 reward_correct=1.0
 reward_starts_correct=0.5
-reward_contains_answer_trigger=0.01
+reward_contains_answer_trigger=0.00
 max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'
@@ -63,6 +63,7 @@ accelerate launch \
         --model_dir "${model_dir}" \
         --batch_size "${batch_size}" \
         --mini_batch_size "${mini_batch_size}" \
+        --eval_batch_size "${eval_batch_size}" \
         --ppo_epochs "${ppo_epochs}" \
         --n_epochs "${n_epochs}" \
         --num_workers "${num_workers}" \

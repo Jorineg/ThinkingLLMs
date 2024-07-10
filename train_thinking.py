@@ -10,11 +10,8 @@ from datetime import timedelta
 from functools import partial
 import json
 import os
-import random
-from src.python_engine import run_python_code, process_code
 from src.utils import (
     set_seed,
-    floatify,
     discount_cumsum,
     do_gather,
     allgather,
@@ -86,26 +83,6 @@ def extract_answer_cot_batch(answer_cot_batch):
         answer_trigger.join(splitted[1:]) if len(splitted) >= 2 else ""
         for splitted in splitted_batch
     ]
-
-
-# def check_cot_collection_answer(extracted_ans, target_answer):
-#     if isinstance(target_answer, list):
-#         return extracted_ans in target_answer
-#     else:
-#         return extracted_ans == target_answer
-
-
-# def compare_and_calculate_reward(cot, target_answer):
-#     reward = 0
-#     extracted_ans = cot.split(answer_trigger)[-1] if answer_trigger in cot else ""
-#     reward = int(extracted_ans == target_answer)
-#     if reward == 0 and extracted_ans.startswith(target_answer):
-#         reward = 0.5
-
-#     if reward == 0 and answer_trigger in cot:
-#         reward = 0.01
-
-#     return reward
 
 
 def check_answer(extracted_ans, target_answer):
@@ -182,51 +159,61 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         accelerator.print(f"Using cot_trigger: '{cot_trigger}'")
         accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
 
-        def tokenize_fn(batch, args, tokenizer):
-            assert tokenizer.eos_token_id is not None, (
-                tokenizer.eos_token_id,
-                tokenizer.eos_token,
-            )
-            new_batch = defaultdict(list)
-            all_keys = list(batch.keys())
-            for item_values in zip(*(batch[k] for k in all_keys)):
-                item = {k: item_values[i] for i, k in enumerate(all_keys)}
+        def tokenize_fn(batch, tokenizer):
+            assert tokenizer.eos_token_id is not None, (tokenizer.eos_token_id, tokenizer.eos_token)
+            # new_batch = defaultdict(list)
+            # all_keys = list(batch.keys())
+            # for item_values in zip(*(batch[k] for k in all_keys)):
+            #     item = {k: item_values[i] for i, k in enumerate(all_keys)}
 
-                question = item[IN_COL].strip()
+            #     question = item[IN_COL].strip()
 
-                prefix_text = format_input_batch([question], answer_trigger=answer_trigger)[0]
+            #     prefix_text = format_input_batch([question], enable_penalty=False)[0]
 
-                prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
-                if len(prefix_encode["input_ids"]) > args["max_input_length"]:
-                    continue
+            #     prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
+            #     if len(prefix_encode["input_ids"]) > args["max_input_length"]:
+            #         continue
 
 
-                prefix = prefix_encode["input_ids"]
-                prefix_attention_mask = prefix_encode["attention_mask"]
+            #     prefix = prefix_encode["input_ids"]
+            #     prefix_attention_mask = prefix_encode["attention_mask"]
 
-                new_batch["prefix"].append(prefix)
-                new_batch["prefix_attention_mask"].append(prefix_attention_mask)
-                new_batch["question"].append(question)
-                new_batch["prefix_text"].append(prefix_text)
-                new_batch["task"].append(item[TASK_COL])
-                new_batch["targets"].append(item[OUT_COL])
+            #     new_batch["prefix"].append(prefix)
+            #     new_batch["prefix_attention_mask"].append(prefix_attention_mask)
+            #     new_batch["question"].append(question)
+            #     new_batch["prefix_text"].append(prefix_text)
+            #     new_batch["task"].append(item[TASK_COL])
+            #     new_batch["targets"].append(item[OUT_COL])
+            formatted_batch = format_input_batch(batch[IN_COL], enable_penalty=False)
+            tokenized_batch = tokenizer(formatted_batch, add_special_tokens=False)
+            
+            tokenized_batch["prefix"] = tokenized_batch["input_ids"]
+            tokenized_batch["prefix_attention_mask"] = tokenized_batch["attention_mask"]
+            tokenized_batch["question"] = batch[IN_COL]
+            tokenized_batch["prefix_text"] = formatted_batch
+            tokenized_batch["task"] = batch[TASK_COL]
+            tokenized_batch["targets"] = batch[OUT_COL]
 
-            return new_batch
+            return tokenized_batch
 
-        tokenized_dataset = DatasetDict(
-            {
-                mode: dataset.map(
-                    tokenize_fn,
-                    fn_kwargs={"args": args, "tokenizer": tokenizer},
-                    batched=True,
-                    remove_columns=dataset.column_names,
-                    num_proc=None,
-                    load_from_cache_file=True,
-                    keep_in_memory=False,
-                )
-                for mode, dataset in raw_dataset.items()
-            }
+            # return new_batch
+
+        tokenized_dataset = raw_dataset.map(
+            tokenize_fn,
+            fn_kwargs={"tokenizer": tokenizer},
+            batched=True,
+            remove_columns=raw_dataset.column_names,
+            load_from_cache_file=True
         )
+
+        # filter for <= max_input_length tokens
+        def filter_fn(batch):
+            return [len(prefix) <= args["max_input_length"] for prefix in batch["prefix"]]
+
+        tokenized_dataset = tokenized_dataset.filter(filter_fn, batched=True, batch_size=-1)
+
+
+
         accelerator.print("Processed data:", tokenized_dataset)
 
         if accelerator.is_main_process and args["wandb_log"]:
