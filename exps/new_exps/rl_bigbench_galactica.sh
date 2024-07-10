@@ -13,7 +13,7 @@ ref_model_name_or_path="jeggers/galactica-125m-cot"
 
 reward_correct=1.0
 reward_starts_correct=0.5
-reward_contains_answer_trigger=0.00
+reward_contains_answer_trigger=0.01
 max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'

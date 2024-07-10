@@ -161,34 +161,10 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
         def tokenize_fn(batch, tokenizer):
             assert tokenizer.eos_token_id is not None, (tokenizer.eos_token_id, tokenizer.eos_token)
-            # new_batch = defaultdict(list)
-            # all_keys = list(batch.keys())
-            # for item_values in zip(*(batch[k] for k in all_keys)):
-            #     item = {k: item_values[i] for i, k in enumerate(all_keys)}
 
-            #     question = item[IN_COL].strip()
-
-            #     prefix_text = format_input_batch([question], enable_penalty=False)[0]
-
-            #     prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
-            #     if len(prefix_encode["input_ids"]) > args["max_input_length"]:
-            #         continue
-
-
-            #     prefix = prefix_encode["input_ids"]
-            #     prefix_attention_mask = prefix_encode["attention_mask"]
-
-            #     new_batch["prefix"].append(prefix)
-            #     new_batch["prefix_attention_mask"].append(prefix_attention_mask)
-            #     new_batch["question"].append(question)
-            #     new_batch["prefix_text"].append(prefix_text)
-            #     new_batch["task"].append(item[TASK_COL])
-            #     new_batch["targets"].append(item[OUT_COL])
             formatted_batch = format_input_batch(batch[IN_COL], enable_penalty=False)
             tokenized_batch = tokenizer(formatted_batch, add_special_tokens=False)
-            
-            tokenized_batch["prefix"] = tokenized_batch["input_ids"]
-            tokenized_batch["prefix_attention_mask"] = tokenized_batch["attention_mask"]
+    
             tokenized_batch["question"] = batch[IN_COL]
             tokenized_batch["prefix_text"] = formatted_batch
             tokenized_batch["task"] = batch[TASK_COL]
@@ -196,23 +172,19 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
             return tokenized_batch
 
-            # return new_batch
-
         tokenized_dataset = raw_dataset.map(
             tokenize_fn,
             fn_kwargs={"tokenizer": tokenizer},
             batched=True,
-            remove_columns=raw_dataset.column_names,
-            load_from_cache_file=True
+            remove_columns=raw_dataset["train"].column_names,
+            batch_size=-1
         )
 
         # filter for <= max_input_length tokens
         def filter_fn(batch):
-            return [len(prefix) <= args["max_input_length"] for prefix in batch["prefix"]]
+            return [len(prefix) <= args["max_input_length"] for prefix in batch["input_ids"]]
 
         tokenized_dataset = tokenized_dataset.filter(filter_fn, batched=True, batch_size=-1)
-
-
 
         accelerator.print("Processed data:", tokenized_dataset)
 
@@ -227,39 +199,30 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 }
             )
 
-    def collate_fn(batch, args, tokenizer):
-        max_prefix_length = max([len(item["prefix"]) for item in batch])
+    def collate_fn(batch, tokenizer):
+        max_prefix_length = max([len(item["input_ids"]) for item in batch])
         prefix_left_padded = []
         prefix_attention_mask_left_padded = []
 
         for item in batch:
             prefix_left_padded.append(
-                [tokenizer.pad_token_id] * (max_prefix_length - len(item["prefix"]))
-                + item["prefix"]
+                [tokenizer.pad_token_id] * (max_prefix_length - len(item["input_ids"]))
+                + item["input_ids"]
             )
             prefix_attention_mask_left_padded.append(
                 [0] * (max_prefix_length - len(item["prefix_attention_mask"]))
                 + item["prefix_attention_mask"]
             )
 
-        ppo_forward_kwargs = {
-            "query": [item["prefix_text"] for item in batch],
-            "query_tensors": torch.LongTensor(prefix_left_padded),
-            "query_tensors_attention_mask": torch.BoolTensor(
-                prefix_attention_mask_left_padded
-            ),
-            "answer_values": [item["targets"] for item in batch],
-            "tasks": [item["task"] for item in batch],
-        }
-        generate_prefix_kwargs = {
+        kwargs = {
+            "prefix_text": [item["prefix_text"] for item in batch],
             "input_ids": torch.LongTensor(prefix_left_padded),
+            "targets": [item["targets"] for item in batch],
+            "task": [item["task"] for item in batch],
             "attention_mask": torch.BoolTensor(prefix_attention_mask_left_padded),
         }
 
-        return {
-            "ppo_forward_kwargs": ppo_forward_kwargs,
-            "generate_prefix_kwargs": generate_prefix_kwargs,
-        }
+        return kwargs
 
     train_dataloader = DataLoader(
         tokenized_dataset["train"],
@@ -267,7 +230,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         batch_size=args["batch_size"],
         num_workers=args["num_workers"],
         pin_memory=True,
-        collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
+        collate_fn=partial(collate_fn, tokenizer=tokenizer),
     )
 
     test_all_dataloader = DataLoader(
@@ -276,7 +239,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         batch_size=args["eval_batch_size"],
         num_workers=args["num_workers"],
         pin_memory=True,
-        collate_fn=partial(collate_fn, args=args, tokenizer=tokenizer),
+        collate_fn=partial(collate_fn, tokenizer=tokenizer),
     )
 
     return (
@@ -313,17 +276,14 @@ def rollout(
     model,
     ref_model,
     tokenizer,
-    query_tensors,
-    query_tensors_attention_mask,
-    answer_values,
-    tasks=None,
+    batch,
     iter=None,
 ):
     model.eval()
     with torch.no_grad():
         gen_output = accelerator.unwrap_model(model).generate(
-            input_ids=query_tensors,
-            attention_mask=query_tensors_attention_mask,
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
             top_k=0.0,
             top_p=1.0,
             do_sample=True,
@@ -346,7 +306,7 @@ def rollout(
     correctness = []
     # for i, extracted_ans in enumerate(execute_fn(programs)):
     for i, cot in enumerate(programs):
-        target_value = answer_values[i]
+        target_value = batch["targets"][i]
         reward = compare_and_calculate_reward(cot, target_value)
         correctness.append(reward)
 
@@ -372,9 +332,9 @@ def rollout(
             )  # (bs, seqlen-1)
 
     # Masking the last prompt token up untils the token before eos_token_id
-    prompt_len = query_tensors.size(1)
+    prompt_len = batch["input_ids"].size(1)
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
-    mask[:, query_tensors.size(1) - 1 : -1] = 1
+    mask[:, batch["input_ids"].size(1) - 1 : -1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
     score_rew[:, -2] = np.array(correctness)
     nonzero = (model_input_ids == tokenizer.eos_token_id).nonzero()
@@ -500,12 +460,7 @@ def train_one_epoch(
                 model,
                 ref_model,
                 tokenizer,
-                query_tensors=batch["ppo_forward_kwargs"]["query_tensors"],
-                query_tensors_attention_mask=batch["ppo_forward_kwargs"][
-                    "query_tensors_attention_mask"
-                ],
-                answer_values=batch["ppo_forward_kwargs"]["answer_values"],
-                tasks=batch["ppo_forward_kwargs"]["tasks"],
+                batch,
                 iter=global_iter_num,
             )
             model.train()
@@ -515,7 +470,7 @@ def train_one_epoch(
             elif args["adv_whitening"] == "local":
                 adv = masked_whiten(adv, mask)
 
-            batch_size_per_gpu = len(batch["ppo_forward_kwargs"]["query"])
+            batch_size_per_gpu = len(batch["input_ids"])
             mini_batch_size_per_gpu = args["mini_batch_size"]
             ppo_epochs = args["ppo_epochs"]
             train_stats = {}
@@ -531,10 +486,10 @@ def train_one_epoch(
                         score,
                     )
                     for query, program, task, correct, score in zip(
-                        batch["ppo_forward_kwargs"]["query"],
+                        batch["question"],
                         programs,
-                        batch["ppo_forward_kwargs"]["tasks"],
-                        batch["ppo_forward_kwargs"]["answer_values"],
+                        batch["task"],
+                        batch["targets"],
                         correctness,
                     )
                 ]
@@ -908,7 +863,8 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         desc="Evaluation Gen Loop",
     ):
         output_ = accelerator.unwrap_model(model).generate(
-            **batch["generate_prefix_kwargs"],
+            batch["input_ids"],
+            batch["attention_mask"],
             max_new_tokens=args["max_gen_length"],
             output_scores=True,
             return_dict_in_generate=True,
@@ -934,7 +890,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             for g in generated_ids
         ]
         predictions.extend(preds)
-        target = batch["ppo_forward_kwargs"]["answer_values"]
+        target = batch["targets"]
         targets.extend(target)
 
     predictions = predictions[: len(dataset)]
