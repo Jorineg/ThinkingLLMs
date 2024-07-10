@@ -210,8 +210,8 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 + item["input_ids"]
             )
             prefix_attention_mask_left_padded.append(
-                [0] * (max_prefix_length - len(item["prefix_attention_mask"]))
-                + item["prefix_attention_mask"]
+                [0] * (max_prefix_length - len(item["attention_mask"]))
+                + item["attention_mask"]
             )
 
         kwargs = {
@@ -242,13 +242,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
     )
 
-    return (
-        (tokenized_dataset["train"], train_dataloader),
-        (
-            tokenized_dataset["test"],
-            test_all_dataloader,
-        ),
-    )
+    return train_dataloader, test_all_dataloader
 
 
 def do_checkpoint(args, model, tokenizer, save_path, most_recent_ckpts_paths=None):
@@ -408,14 +402,12 @@ def train_one_epoch(
     args,
     model,
     ref_model,
-    train_dataset,
     train_dataloader,
     optimizer,
     scheduler,
     tokenizer,
     global_step,
     global_iter_num,
-    test_dataset,
     test_dataloader,
     prefix,
     epoch,
@@ -454,7 +446,7 @@ def train_one_epoch(
                 old_logprob,
                 _,
                 adv,
-                programs,
+                generated_texts,
             ) = rollout(
                 args,
                 model,
@@ -475,63 +467,30 @@ def train_one_epoch(
             ppo_epochs = args["ppo_epochs"]
             train_stats = {}
             if accelerator.is_main_process and args["wandb_log"]:
-                thinkings = [
-                    (
-                        query,
-                        program.split(answer_trigger)[0],
-                        task,
-                        program.split(answer_trigger)[-1],
-                        program,
-                        correct,
-                        score,
-                    )
-                    for query, program, task, correct, score in zip(
-                        batch["question"],
-                        programs,
-                        batch["task"],
-                        batch["targets"],
-                        correctness,
-                    )
-                ]
-                # calculate length of thinking with tokenization
-                data = []
-                for (
-                    query,
-                    thinking,
-                    task,
-                    ans,
-                    program,
-                    correct_ans,
-                    score,
-                ) in thinkings:
-                    tokens = tokenizer(thinking, add_special_tokens=False)["input_ids"]
-                    token_count = len(tokens)
-                    wandb.log({f"cot_length/{task}": token_count}, step=global_iter_num)
-                    data.append(
-                        [
-                            query,
-                            task,
-                            thinking,
-                            token_count,
-                            ans,
-                            program,
-                            correct_ans,
-                            score,
-                        ]
-                    )
-                # sort by length of thinking, descending
-                data = sorted(data, key=lambda x: x[2], reverse=True)
-                columns = [
-                    "question",
-                    "task",
-                    "cot",
-                    "length",
-                    "answer",
-                    "program",
-                    "correct answer",
-                    "score",
-                ]
-                table = wandb.Table(data=data, columns=columns)
+                reward_sums = torch.sum(rew, dim=1)
+                extracted_ans = extract_answer_cot_batch(generated_texts)
+                cot_lengths = [len(tokenizer(g)["input_ids"])-len(tokenizer(e)["input_ids"]) for g, e in zip(generated_texts, extracted_ans)]
+                data = {
+                    "dataset": batch["task"],
+                    "input": batch["prefix_text"],
+                    "generation": generated_texts,
+                    "extracted answer": extracted_ans,
+                    "correct answer": batch["targets"],
+                    "cot length": cot_lengths,
+                    "score reward": torch.sum(score_rew, dim=1).tolist(),
+                    "kl reward": torch.sum(kl_rew, dim=1).tolist(),
+                    # "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
+                    # "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
+                    # "answer present reward": torch.sum(
+                    #     answer_trigger_present_rew, dim=1
+                    # ).tolist(),
+                    "total reward": reward_sums,
+                }
+                # # sort by length of thinking, descending
+                # data = sorted(data, key=lambda x: len(x[2]), reverse=True)
+                table = wandb.Table(
+                    data=list(zip(*data.values())), columns=list(data.keys())
+                )
                 wandb.log({"thinking": table}, step=global_iter_num)
 
             for _ in range(ppo_epochs):
@@ -780,7 +739,7 @@ def train_one_epoch(
                 evaluate_result_dict = {
                     f"Eval.Gen.{k}": v
                     for k, v in evaluate_generation(
-                        args, model, test_dataset, test_dataloader, tokenizer
+                        args, model, test_dataloader, tokenizer
                     ).items()
                 }
                 eval_log_dict.update(evaluate_result_dict)
@@ -852,7 +811,7 @@ def train_one_epoch(
     return epoch_result_dict, global_step, global_iter_num
 
 
-def evaluate_generation(args, model, dataset, dataloader, tokenizer):
+def evaluate_generation(args, model, dataloader, tokenizer):
     model.eval()
     predictions = []
     targets = []
@@ -863,13 +822,11 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         desc="Evaluation Gen Loop",
     ):
         output_ = accelerator.unwrap_model(model).generate(
-            batch["input_ids"],
-            batch["attention_mask"],
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
             max_new_tokens=args["max_gen_length"],
             output_scores=True,
             return_dict_in_generate=True,
-            num_beams=1,
-            use_cache=True,
             do_sample=False,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
@@ -893,8 +850,8 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
         target = batch["targets"]
         targets.extend(target)
 
-    predictions = predictions[: len(dataset)]
-    targets = targets[: len(dataset)]
+    # predictions = predictions[: len(dataset)]
+    # targets = targets[: len(dataset)]
 
     if accelerator.is_main_process and accelerator.is_local_main_process:
         pred_cots = extract_completion_batch(predictions)
@@ -939,10 +896,7 @@ def main(args):
     tokenizer.pad_token_id = 1
     tokenizer.eos_token_id = 2
 
-    (
-        (train_dataset, train_dataloader),
-        (test_all_dataset, test_all_dataloader),
-    ) = prepare_datasets_and_data_loaders(args, tokenizer)
+    train_dataloader, test_all_dataloader = prepare_datasets_and_data_loaders(args, tokenizer)
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
     model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
@@ -1014,9 +968,7 @@ def main(args):
                 "args": args,
                 "model": model,
                 "ref_model": ref_model,
-                "train_dataset": train_dataset,
                 "train_dataloader": train_dataloader,
-                "test_dataset": test_all_dataset,
                 "test_dataloader": test_all_dataloader,
                 "optimizer": optimizer,
                 "scheduler": scheduler,
@@ -1041,7 +993,6 @@ def main(args):
                     for k, v in evaluate_generation(
                         args,
                         model,
-                        test_all_dataset,
                         test_all_dataloader,
                         tokenizer,
                     ).items()
