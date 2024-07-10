@@ -39,101 +39,91 @@ load_dotenv()
 
 tqdm = partial(tqdm, ncols=0, leave=False)
 
-TIMEOUT = 10
-instruction = None
-cot_trigger = None
-answer_trigger = None
+IN_COL = "final_input"
+OUT_COL = "final_target"
+TASK_COL = "dataset"
+
+penalty_trigger = "Penalty:"
+problem_prefix = "Problem:"
+answer_trigger = "ANSWER: "
+cot_trigger = f"BOT: "
+instruction = ""
 
 
-def setup_cot(src_name):
-    assert src_name in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "CoT-Collection"]
-    global instruction
-    global cot_trigger
-    global answer_trigger
-    global extra_instruction_announce
-    # Complete output is in this form: f'{instruction}{question.strip()}{cot_trigger}{answer_cot.strip()}'
-    answer_trigger = "ANSWER: "
-    cot_trigger = f"BOT :"
-    instruction = f""
-    extra_instruction_announce = (
-        "Here is an extra instruction, specifically for this task:\n"
-    )
-    return
+def format_input_batch(input_batch, enable_penalty=True, penalties=None, answer_trigger="", outputs=None):
+    if penalties is None:
+        penalties = [0.001] * len(input_batch)
+
+    if outputs is None:
+        outputs = [""] * len(input_batch)
+
+    penalty_announce = [""] * len(input_batch)
+    if enable_penalty:
+        penalty_announce = [f"{penalty_trigger} {penalty:.5f}" for penalty in penalties]
+
+    return [
+        f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
+        for input, output, penalty in zip(input_batch, outputs, penalty_announce)
+    ]
 
 
-post_process_final_answer_fn_mapper = {
-    "CoT-Collection": lambda x: x,
-    "gsm8k": lambda x: float(x.replace(",", "").strip()),
-    "svamp": lambda x: float(x.replace(",", "").strip()),
-    "mathqa": lambda x: x.lower().replace('"', "").replace("'", "").strip(),
-    "mathqa-numeric": lambda x: float(x),
-}
-### the answer_cot is a list of answer_cot
-post_process_answer_cot_fn_mapper = {
-    ("python", "gsm8k"): lambda answer_cot: [
-        floatify(res) for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("python", "svamp"): lambda answer_cot: [
-        floatify(res) for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("python", "mathqa"): lambda answer_cot: [
-        str(res).lower().replace('"', "").replace("'", "").strip()
-        for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("python", "mathqa-numeric"): lambda answer_cot: [
-        floatify(res) for res in run_python_code(programs=answer_cot, TIMEOUT=TIMEOUT)
-    ],
-    ("nl", "gsm8k"): lambda answer_cot: [
-        floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
-    ],
-    ("nl", "svamp"): lambda answer_cot: [
-        floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
-    ],
-    ("nl", "mathqa"): lambda answer_cot: [
-        res.split(answer_trigger)[-1].lower().replace('"', "").replace("'", "").strip()
-        for res in answer_cot
-    ],
-    ("nl", "mathqa-numeric"): lambda answer_cot: [
-        floatify(res.split(answer_trigger)[-1].strip()) for res in answer_cot
-    ],
-    ("nl", "CoT-Collection"): lambda answer_cot: [
-        res.split(answer_trigger)[-1] for res in answer_cot
-    ],
-}
+# takes a batch of input and completion strings
+# returns a list of completion strings
+def extract_completion_batch(input_and_completion_batch):
+    cot_trigger_count_in_instructions = instruction.count(cot_trigger)
+    splitted = [res.split(cot_trigger) for res in input_and_completion_batch]
+    return [
+        cot_trigger.join(split[cot_trigger_count_in_instructions + 1 :])[1:]
+        for split in splitted
+    ]
 
 
-def check_cot_collection_answer(extracted_ans, target_answer):
-    if isinstance(target_answer, list):
-        return extracted_ans in target_answer
-    else:
-        return extracted_ans == target_answer
+# assumes to get back only generated tokens
+# returns empty string if no answer trigger is found
+def extract_answer_cot_batch(answer_cot_batch):
+    splitted_batch = [res.split(answer_trigger) for res in answer_cot_batch]
+    return [
+        answer_trigger.join(splitted[1:]) if len(splitted) >= 2 else ""
+        for splitted in splitted_batch
+    ]
+
+
+# def check_cot_collection_answer(extracted_ans, target_answer):
+#     if isinstance(target_answer, list):
+#         return extracted_ans in target_answer
+#     else:
+#         return extracted_ans == target_answer
+
+
+# def compare_and_calculate_reward(cot, target_answer):
+#     reward = 0
+#     extracted_ans = cot.split(answer_trigger)[-1] if answer_trigger in cot else ""
+#     reward = int(extracted_ans == target_answer)
+#     if reward == 0 and extracted_ans.startswith(target_answer):
+#         reward = 0.5
+
+#     if reward == 0 and answer_trigger in cot:
+#         reward = 0.01
+
+#     return reward
+
+
+def check_answer(extracted_ans, target_answer):
+    if extracted_ans.strip() == target_answer:
+        return args["reward_correct"]
+    if extracted_ans.strip().startswith(target_answer):
+        return args["reward_starts_correct"]
+    return 0
 
 
 def compare_and_calculate_reward(cot, target_answer):
     reward = 0
-    extracted_ans = cot.split(answer_trigger)[-1] if answer_trigger in cot else ""
-    reward = int(extracted_ans == target_answer)
-    if reward == 0 and extracted_ans.startswith(target_answer):
-        reward = 0.5
-
-    if reward == 0 and answer_trigger in cot:
-        reward = 0.01
-
+    if answer_trigger in cot:
+        extracted_ans = extract_answer_cot_batch([cot])[0]
+        reward = check_answer(extracted_ans, target_answer)
+        if reward == 0:
+            reward = args["reward_contains_answer_trigger"]
     return reward
-
-
-compare_answer_fn_mapper = {
-    "CoT-Collection": check_cot_collection_answer,
-    "gsm8k": lambda extracted_ans, target_answer: abs(extracted_ans - target_answer)
-    <= 1e-2,
-    "svamp": lambda extracted_ans, target_answer: abs(extracted_ans - target_answer)
-    <= 1e-2,
-    "mathqa": lambda extracted_ans, target_answer: extracted_ans == target_answer,
-    "mathqa-numeric": lambda extracted_ans, target_answer: abs(
-        extracted_ans - target_answer
-    )
-    <= 1e-2,
-}
 
 
 def prepare_deepspeed_ref_model(model):
@@ -188,12 +178,9 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
         accelerator.print("Raw data:", raw_dataset)
 
-        src_name = "CoT-Collection"
-        setup_cot(src_name)
-        accelerator.print("Using instruction:", instruction)
-        accelerator.print("Using extra_instruction:", extra_instruction_announce)
-        accelerator.print("Using cot_trigger:", cot_trigger)
-        accelerator.print("Using answer_trigger:", answer_trigger)
+        accelerator.print(f"Using instruction: '{instruction}'")
+        accelerator.print(f"Using cot_trigger: '{cot_trigger}'")
+        accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
 
         def tokenize_fn(batch, args, tokenizer):
             assert tokenizer.eos_token_id is not None, (
@@ -205,23 +192,9 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             for item_values in zip(*(batch[k] for k in all_keys)):
                 item = {k: item_values[i] for i, k in enumerate(all_keys)}
 
-                inputs, targets, task = (
-                    item["final_input"],
-                    item["final_target"],
-                    item["dataset"],
-                )
+                question = item[IN_COL].strip()
 
-                question = inputs.strip()
-
-                prefix_text = f"{instruction}{question}\n{cot_trigger}"
-
-                # Modify for particular datasets and engine
-                if (
-                    src_name
-                    in ["gsm8k", "mathqa", "svamp", "mathqa-numeric", "CoT-Collection"]
-                    and args["engine"] == "python"
-                ):
-                    prefix_text += f'def solution():\n    """{question}"""\n'
+                prefix_text = format_input_batch([question], answer_trigger=answer_trigger)[0]
 
                 prefix_encode = tokenizer(prefix_text, add_special_tokens=False)
                 if len(prefix_encode["input_ids"]) > args["max_input_length"]:
@@ -235,8 +208,8 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 new_batch["prefix_attention_mask"].append(prefix_attention_mask)
                 new_batch["question"].append(question)
                 new_batch["prefix_text"].append(prefix_text)
-                new_batch["task"].append(task)
-                new_batch["targets"].append(targets)
+                new_batch["task"].append(item[TASK_COL])
+                new_batch["targets"].append(item[OUT_COL])
 
             return new_batch
 
@@ -259,9 +232,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         if accelerator.is_main_process and args["wandb_log"]:
             wandb.config.update(
                 {
-                    "src_name": src_name,
                     "instruction": instruction,
-                    "extra_instruction_announce": extra_instruction_announce,
                     "cot_trigger": cot_trigger,
                     "answer_trigger": answer_trigger,
                     "raw_dataset": str(raw_dataset),
@@ -358,7 +329,6 @@ def rollout(
     query_tensors,
     query_tensors_attention_mask,
     answer_values,
-    src_name,
     tasks=None,
     iter=None,
 ):
@@ -383,7 +353,8 @@ def rollout(
     completed_texts = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
-    programs = [text.split(cot_trigger)[-1] for text in completed_texts]
+    # programs = [text.split(cot_trigger)[-1] for text in completed_texts]
+    programs = extract_completion_batch(completed_texts)
 
     correctness = []
     # for i, extracted_ans in enumerate(execute_fn(programs)):
@@ -547,7 +518,6 @@ def train_one_epoch(
                     "query_tensors_attention_mask"
                 ],
                 answer_values=batch["ppo_forward_kwargs"]["answer_values"],
-                src_name="CoT-Collection",
                 tasks=batch["ppo_forward_kwargs"]["tasks"],
                 iter=global_iter_num,
             )
@@ -822,46 +792,21 @@ def train_one_epoch(
                                 "nn/total_grad_norm": total_grad_norm,
                                 "nn/total_param_norm": total_param_norm,
                                 "nn/lr": scheduler.get_last_lr()[0],
-                            },
-                            step=global_iter_num,
-                        )
-                        wandb.log(
-                            {
                                 "acc/acc": train_stats["acc"],
                                 "acc/ncor": train_stats["ncor"],
                                 "acc/total": train_stats["total"],
-                            },
-                            step=global_iter_num,
-                        )
-                        wandb.log(
-                            {
                                 "loss/loss:": loss,
                                 "loss/pg_loss": pg_loss,
                                 "loss/vf_loss": vf_loss,
-                            },
-                            step=global_iter_num,
-                        )
-                        wandb.log(
-                            {
                                 "tokens/mean_query_len": mean_query_len,
                                 "tokens/std_query_len": std_query_len,
                                 "tokens/mean_resp_len": mean_resp_len,
                                 "tokens/std_resp_len": std_resp_len,
-                            },
-                            step=global_iter_num,
-                        )
-                        wandb.log(
-                            {
                                 "policy/mean_ratio": mean_ratio,
                                 "policy/mean_adv": mean_adv,
                                 "policy/var_adv": var_adv,
                                 "policy/mean_logprob": mean_logprob,
                                 "policy/mean_seq_kl": mean_seq_kl,
-                            },
-                            step=global_iter_num,
-                        )
-                        wandb.log(
-                            {
                                 "value/vf_expl_var": vf_expl_var,
                                 "value/mean_vpred": mean_vpred,
                                 "value/mean_return": mean_return,
@@ -991,14 +936,7 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             generated_ids, dim=1, pad_index=tokenizer.pad_token_id, pad_first=True
         )
 
-        # labels = batch["generate_prefix_kwargs"]["labels"]
-        # labels = pad_across_processes(
-        #     labels, dim=1, pad_index=tokenizer.pad_token_id, pad_first=True
-        # )
-        # labels[labels == -100] = tokenizer.pad_token_id
-
         generated_ids = accelerator.gather(generated_ids)
-        # labels = accelerator.gather(labels)
 
         preds = [
             tokenizer.decode(
@@ -1009,14 +947,6 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
             for g in generated_ids
         ]
         predictions.extend(preds)
-        # target = [
-        #     tokenizer.decode(
-        #         t.cpu().numpy().tolist(),
-        #         skip_special_tokens=True,
-        #         clean_up_tokenization_spaces=True,
-        #     ).strip()
-        #     for t in labels
-        # ]
         target = batch["ppo_forward_kwargs"]["answer_values"]
         targets.extend(target)
 
@@ -1024,25 +954,18 @@ def evaluate_generation(args, model, dataset, dataloader, tokenizer):
     targets = targets[: len(dataset)]
 
     if accelerator.is_main_process and accelerator.is_local_main_process:
-        src_name = "CoT-Collection"
-        pred_cots = [pred.split(cot_trigger)[-1].strip() for pred in predictions]
-        execute_fn = post_process_answer_cot_fn_mapper[(args["engine"], src_name)]
+        pred_cots = extract_completion_batch(predictions)
+        pred_answers = extract_answer_cot_batch(pred_cots)
         results = []
         corr_value = 0
-        for pred_cot, target in zip(pred_cots, targets):
+        for pred_cot, target, pred_answer in zip(pred_cots, targets, pred_answers):
             cur_res = {
                 "prediction_cot": pred_cot,
-                "prediction_value": execute_fn([pred_cot])[0],
+                "prediction_value": pred_answer,
                 "target": target,
             }
             results.append(cur_res)
-            corr_value += (
-                compare_answer_fn_mapper[src_name](
-                    cur_res["prediction_value"], cur_res["target"]
-                )
-                if cur_res["prediction_value"] is not None
-                else False
-            )
+            corr_value += compare_and_calculate_reward(pred_cot, target)
 
         res_path = args["model_dir"].rstrip("/") + "/" + "_res.json"
         with open(res_path, "w") as f:
@@ -1296,6 +1219,9 @@ if __name__ == "__main__":
         max_per_task: int = field(default=1000)
         max_test_per_task: int = field(default=100)
         no_policy_loss_steps: int = field(default=0)
+        reward_correct: float = field(default=1.0)
+        reward_starts_correct: float = field(default=0.5)
+        reward_contains_answer_trigger: float = field(default=0.01)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
