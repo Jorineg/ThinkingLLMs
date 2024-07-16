@@ -395,20 +395,29 @@ def rollout(
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
     mask[:, batch["input_ids"].size(1) - 1 : -1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
-    # score_rew[:, -2] = np.array(correctness)
+    # like scatter_ but in numpy
+    # np.put_along_axis(
+    #     score_rew, last_completed_token.unsqueeze(1).cpu().numpy(), np.array(correctness).reshape(-1, 1), axis=1
+    # )
 
-    correctness_tensor = torch.tensor(correctness, device=mask.device)
-    score_rew.scatter_(
-        1,
-        last_completed_token.unsqueeze(1),
-        correctness_tensor.unsqueeze(1),
-    )
+    # score_rew[:, -2] = np.array(correctness)
+    # score_rew = torch.zeros_like(mask, device=mask.device, dtype=torch.float)
+
+    # correctness_tensor = torch.tensor(correctness, device=mask.device, dtype=torch.float32)
+    # score_rew = score_rew.scatter_(
+    #     1,
+    #     last_completed_token.unsqueeze(1),
+    #     correctness_tensor.unsqueeze(1),
+    # )
+
+    # # back to numpy
+    # score_rew = score_rew.cpu().numpy()
 
     nonzero = (model_input_ids == tokenizer.eos_token_id).nonzero()
     for bidx, tidx in nonzero:
-        mask[bidx][tidx:] = 0
-        # score_rew[bidx][tidx:] = 0
-        # score_rew[bidx][tidx - 1] = correctness[bidx]
+        mask[bidx][tidx+1:] = 0
+        score_rew[bidx][tidx:] = 0
+        score_rew[bidx][tidx] = correctness[bidx]
 
     # Make the kl reward and the full reward
     kl_rew = None
@@ -420,8 +429,8 @@ def rollout(
         kl_rew[:, :-1] = -kl  # NOTE the minus sign
 
         kl_coef = args["kl_coef"]
-        if iter < 80:
-            kl_coef = 0.1
+        # if iter < 80:
+        #     kl_coef = 0.1
         rew = score_rew + kl_coef * kl_rew
 
     # Process val ret adv logprob
@@ -528,6 +537,10 @@ def log_table_metrics(
             "tokens": tokenized_text,
             "metrics": visualization_metrics,
         }
+        assert len(tokenized_text) == len(text_colors) and len(text_colors) == len(
+            visualization_metrics[0]["score reward"]), (
+            len(tokenized_text), len(text_colors), len(visualization_metrics[0]["score reward"])
+        )
         json_str = json.dumps(visualization_obj)
         json_str = (
             json_str.replace(", ", ",").replace("0.0,", "0,").replace("-0,", "0,")
@@ -613,6 +626,26 @@ def train_one_epoch(
                 batch,
                 iter=global_iter_num,
             )
+
+            if (accelerator.is_main_process and args["wandb_log"]):
+                metrics_dict = {
+                    "dataset": batch["task"],
+                    "input": batch["prefix_text"],
+                    "correct answer": batch["targets"],
+                    "generation": generated_texts,
+                }
+                log_table_metrics(
+                    metrics_dict,
+                    tokenizer,
+                    val,
+                    rew,
+                    ret,
+                    score_rew,
+                    kl_rew,
+                    global_iter_num,
+                    generated_texts_special,
+                )
+
             model.train()
             # preprocess
             if args["adv_whitening"] == "global":
@@ -677,29 +710,6 @@ def train_one_epoch(
                         lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
                     )  # (mini_bs, seqlen-1)
 
-                    if (
-                        accelerator.is_main_process
-                        and args["wandb_log"]
-                        and ppo_epoch == 0
-                        and mini_idx == 0
-                    ):
-                        metrics_dict = {
-                            "dataset": np.array(batch["task"])[b_inds],
-                            "input": np.array(batch["prefix_text"])[b_inds],
-                            "correct answer": np.array(batch["targets"])[b_inds],
-                            "generation": np.array(generated_texts)[b_inds],
-                        }
-                        log_table_metrics(
-                            metrics_dict,
-                            tokenizer,
-                            vpreds,
-                            cur_rew,
-                            cur_ret,
-                            cur_score_rew,
-                            cur_kl_rew,
-                            global_iter_num,
-                            generated_texts_special,
-                        )
                     # Compute losses
                     loss = 0
 
