@@ -2,10 +2,7 @@ from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from datasets import (
-    load_dataset,
-    DatasetDict,
-)
+from datasets import load_dataset
 from datetime import timedelta
 from functools import partial
 import json
@@ -31,14 +28,18 @@ import numpy as np
 import wandb
 import shutil
 from dotenv import load_dotenv
+from matplotlib import cm
 
 load_dotenv()
+
+cmap = cm.get_cmap("viridis")
 
 tqdm = partial(tqdm, ncols=0, leave=False)
 
 IN_COL = "final_input"
 OUT_COL = "final_target"
 TASK_COL = "dataset"
+VISUALIZATION_LINK = "https://jorineg.github.io/js-plots?data="
 
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
@@ -47,7 +48,9 @@ cot_trigger = f"BOT: "
 instruction = ""
 
 
-def format_input_batch(input_batch, enable_penalty=True, penalties=None, answer_trigger="", outputs=None):
+def format_input_batch(
+    input_batch, enable_penalty=True, penalties=None, answer_trigger="", outputs=None
+):
     if penalties is None:
         penalties = [0.001] * len(input_batch)
 
@@ -104,10 +107,6 @@ def compare_and_calculate_reward(cot, target_answer):
 
 
 def prepare_deepspeed_ref_model(model):
-    # Adopted from: https://github.com/huggingface/trl/blob/02f5c1d8cee73045c837d01d7f1577a57779b035/trl/trainer/ppo_trainer.py#L1399
-    import deepspeed
-
-    # Adapted from accelerate: https://github.com/huggingface/accelerate/blob/739b135f8367becb67ffaada12fe76e3aa60fefd/src/accelerate/accelerator.py#L1473
     deepspeed_plugin = accelerator.state.deepspeed_plugin
     config_kwargs = deepspeed_plugin.deepspeed_config
     if model is not None:
@@ -147,11 +146,12 @@ def prepare_deepspeed_ref_model(model):
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
 
-
         raw_dataset = load_dataset("jeggers/CoT-Collection")
 
         # filter out first 3000 samples
-        raw_dataset["train"] = raw_dataset["train"].select(list(range(3000, len(raw_dataset["train"]))))
+        raw_dataset["train"] = raw_dataset["train"].select(
+            list(range(3000, len(raw_dataset["train"])))
+        )
 
         accelerator.print("Raw data:", raw_dataset)
 
@@ -160,11 +160,14 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
 
         def tokenize_fn(batch, tokenizer):
-            assert tokenizer.eos_token_id is not None, (tokenizer.eos_token_id, tokenizer.eos_token)
+            assert tokenizer.eos_token_id is not None, (
+                tokenizer.eos_token_id,
+                tokenizer.eos_token,
+            )
 
             formatted_batch = format_input_batch(batch[IN_COL], enable_penalty=False)
             tokenized_batch = tokenizer(formatted_batch, add_special_tokens=False)
-    
+
             tokenized_batch["question"] = batch[IN_COL]
             tokenized_batch["prefix_text"] = formatted_batch
             tokenized_batch["task"] = batch[TASK_COL]
@@ -177,14 +180,18 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             fn_kwargs={"tokenizer": tokenizer},
             batched=True,
             remove_columns=raw_dataset["train"].column_names,
-            batch_size=-1
+            batch_size=-1,
         )
 
         # filter for <= max_input_length tokens
         def filter_fn(batch):
-            return [len(prefix) <= args["max_input_length"] for prefix in batch["input_ids"]]
+            return [
+                len(prefix) <= args["max_input_length"] for prefix in batch["input_ids"]
+            ]
 
-        tokenized_dataset = tokenized_dataset.filter(filter_fn, batched=True, batch_size=-1)
+        tokenized_dataset = tokenized_dataset.filter(
+            filter_fn, batched=True, batch_size=-1
+        )
 
         accelerator.print("Processed data:", tokenized_dataset)
 
@@ -398,6 +405,62 @@ def rollout(
     )
 
 
+# metrics_dict: generated_texts, tasks, input_texts, targets,
+def log_table_metrics(
+    metrics_dict, tokenizer, vpreds, rew, ret, score_rew, kl_rew, global_iter_num
+):
+    generated_texts = metrics_dict["generation"]
+    reward_sums = torch.sum(rew, dim=1)
+    extracted_ans = extract_answer_cot_batch(generated_texts)
+    cot_lengths = [
+        len(tokenizer(g)["input_ids"]) - len(tokenizer(e)["input_ids"])
+        for g, e in zip(generated_texts, extracted_ans)
+    ]
+    links = []
+    for i in range(len(generated_texts)):
+        tokenized_text = tokenizer.tokenize(generated_texts[i])
+        visualization_metrics = [
+            {
+                "score reward": score_rew[i].tolist(),
+                "kl reward": kl_rew[i].tolist(),
+                "reward": rew[i].tolist(),
+            },
+            {
+                "actual value": ret[i].tolist(),
+                "predicted value": vpreds[i].tolist(),
+            },
+        ]
+        normalized_preds = (vpreds[i] / torch.max(vpreds[i])).tolist()
+        text_colors = [
+            f"rgb{tuple(int(255 * x) for x in cmap(r)[:3])}" for r in normalized_preds
+        ]
+        visualization_obj = {
+            "textColors": text_colors,
+            "tokens": tokenized_text,
+            "metrics": visualization_metrics,
+        }
+        links.append(VISUALIZATION_LINK + json.dumps(visualization_obj))
+
+    data = {
+        **metrics_dict,
+        "extracted answer": extracted_ans,
+        "cot length": cot_lengths,
+        "score reward": torch.sum(score_rew, dim=1).tolist(),
+        "kl reward": torch.sum(kl_rew, dim=1).tolist(),
+        # "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
+        # "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
+        # "answer present reward": torch.sum(
+        #     answer_trigger_present_rew, dim=1
+        # ).tolist(),
+        "total reward": reward_sums,
+        "link": links,
+    }
+    # # sort by length of thinking, descending
+    # data = sorted(data, key=lambda x: len(x[2]), reverse=True)
+    table = wandb.Table(data=list(zip(*data.values())), columns=list(data.keys()))
+    wandb.log({"thinking": table}, step=global_iter_num)
+
+
 def train_one_epoch(
     args,
     model,
@@ -466,34 +529,8 @@ def train_one_epoch(
             mini_batch_size_per_gpu = args["mini_batch_size"]
             ppo_epochs = args["ppo_epochs"]
             train_stats = {}
-            if accelerator.is_main_process and args["wandb_log"]:
-                reward_sums = torch.sum(rew, dim=1)
-                extracted_ans = extract_answer_cot_batch(generated_texts)
-                cot_lengths = [len(tokenizer(g)["input_ids"])-len(tokenizer(e)["input_ids"]) for g, e in zip(generated_texts, extracted_ans)]
-                data = {
-                    "dataset": batch["task"],
-                    "input": batch["prefix_text"],
-                    "generation": generated_texts,
-                    "extracted answer": extracted_ans,
-                    "correct answer": batch["targets"],
-                    "cot length": cot_lengths,
-                    "score reward": torch.sum(score_rew, dim=1).tolist(),
-                    "kl reward": torch.sum(kl_rew, dim=1).tolist(),
-                    # "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
-                    # "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
-                    # "answer present reward": torch.sum(
-                    #     answer_trigger_present_rew, dim=1
-                    # ).tolist(),
-                    "total reward": reward_sums,
-                }
-                # # sort by length of thinking, descending
-                # data = sorted(data, key=lambda x: len(x[2]), reverse=True)
-                table = wandb.Table(
-                    data=list(zip(*data.values())), columns=list(data.keys())
-                )
-                wandb.log({"thinking": table}, step=global_iter_num)
 
-            for _ in range(ppo_epochs):
+            for ppo_epoch in range(ppo_epochs):
                 perms = torch.randperm(batch_size_per_gpu)
                 for mini_idx in range(0, len(perms), mini_batch_size_per_gpu):
                     b_inds = perms[mini_idx : mini_idx + mini_batch_size_per_gpu]
@@ -545,6 +582,28 @@ def train_one_epoch(
                         lm_logits[:, :-1, :], cur_model_input_ids[:, 1:]
                     )  # (mini_bs, seqlen-1)
 
+                    if (
+                        accelerator.is_main_process
+                        and args["wandb_log"]
+                        and ppo_epoch == 0
+                        and mini_idx == 0
+                    ):
+                        metrics_dict = {
+                            "dataset": batch["task"][b_inds],
+                            "input": batch["prefix_text"][b_inds],
+                            "correct answer": batch["targets"][b_inds],
+                            "generation": generated_texts,
+                        }
+                        log_table_metrics(
+                            metrics_dict,
+                            tokenizer,
+                            vpreds,
+                            cur_rew,
+                            cur_ret,
+                            cur_score_rew,
+                            cur_kl_rew,
+                            global_iter_num,
+                        )
                     # Compute losses
                     loss = 0
 
@@ -577,16 +636,7 @@ def train_one_epoch(
                     # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
 
                     # total loss
-                    if global_iter_num < args["no_policy_loss_steps"]:
-                        loss += pg_loss + 10 * vf_loss
-                    elif global_iter_num < 2 * args["no_policy_loss_steps"]:
-                        loss += pg_loss + 5 * vf_loss
-                    elif global_iter_num < 3 * args["no_policy_loss_steps"]:
-                        loss += pg_loss + 2 * vf_loss
-                    elif global_iter_num < 4 * args["no_policy_loss_steps"]:
-                        loss += pg_loss + vf_loss
-                    else:
-                        loss += pg_loss + vf_coef * vf_loss
+                    loss += pg_loss + vf_coef * vf_loss
 
                     # token related metrics
                     mean_query_len = torch.mean(
@@ -896,7 +946,9 @@ def main(args):
     tokenizer.pad_token_id = 1
     tokenizer.eos_token_id = 2
 
-    train_dataloader, test_all_dataloader = prepare_datasets_and_data_loaders(args, tokenizer)
+    train_dataloader, test_all_dataloader = prepare_datasets_and_data_loaders(
+        args, tokenizer
+    )
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
     model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
