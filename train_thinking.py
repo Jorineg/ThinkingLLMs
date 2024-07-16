@@ -49,6 +49,8 @@ answer_trigger = "ANSWER: "
 cot_trigger = f"BOT: "
 instruction = ""
 
+answer_trigger_token_count = -1
+
 
 def format_input_batch(
     input_batch, enable_penalty=True, penalties=None, answer_trigger="", outputs=None
@@ -147,7 +149,7 @@ def prepare_deepspeed_ref_model(model):
 
 def prepare_datasets_and_data_loaders(args, tokenizer):
     with accelerator.main_process_first():
-
+        answer_trigger_token_count = len(tokenizer(answer_trigger)["input_ids"])
         raw_dataset = load_dataset("jeggers/CoT-Collection")
 
         # filter out first 3000 samples
@@ -306,16 +308,67 @@ def rollout(
     completed_texts_special = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
     )
-    # programs = [text.split(cot_trigger)[-1] for text in completed_texts]
     programs = extract_completion_batch(completed_texts)
 
     correctness = []
-    # for i, extracted_ans in enumerate(execute_fn(programs)):
     for i, cot in enumerate(programs):
         target_value = batch["targets"][i]
         reward = compare_and_calculate_reward(cot, target_value)
         correctness.append(reward)
 
+    # mask for model input (prompt only, no padding)
+    completion_start_index = batch["input_ids"].shape[1]
+    input_mask = torch.zeros_like(completed_tensors, device=completed_tensors.device)
+    input_mask[:, :completion_start_index] = 1
+    # mask no padding (input output only)
+    no_padding_mask = completed_tensors != tokenizer.pad_token_id
+    input_mask = input_mask & no_padding_mask
+    # mask for model output (output only, no padding)
+    output_mask = no_padding_mask & ~input_mask
+
+    last_completed_token = torch.tensor(
+        [torch.nonzero(x).max().item() for x in output_mask],
+        device=completed_tensors.device,
+    )
+
+    # answer_trigger_end_tokens = []
+    # answer_end_token_positions = []
+    # for i, target in enumerate(batch["targets"]):
+    #     # subtract answer length from cot only if answer trigger is present at least two times
+    #     answer_trigger_start_token = -1
+    #     answer_end_token = last_completed_token[i]
+    #     reward = compare_and_calculate_reward(programs[i], target)
+    #     if answer_trigger in programs[i]:
+    #         # decode generated text token wise
+    #         generated_token_texts = tokenizer.batch_decode(
+    #             completed_tensors[i], skip_special_tokens=True
+    #         )
+    #         text = ""
+    #         for idx, token in enumerate(generated_token_texts[completion_start_index:]):
+    #             text += token
+    #             if answer_trigger in text:
+    #                 answer_trigger_start_token = (
+    #                     completion_start_index + idx - answer_trigger_token_count
+    #                 )
+    #                 break
+    #         assert (
+    #             answer_trigger_start_token != -1
+    #         ), f"answer trigger not found in '{generated_token_texts}' '{text}', '{programs[i]}'"
+    #         if reward > 0:
+    #             text = ""
+    #             answer_pos = answer_trigger_start_token + answer_trigger_token_count
+    #             for idx, token in enumerate(generated_token_texts[answer_pos:]):
+    #                 text += token
+    #                 if target in text:
+    #                     answer_end_token = answer_pos + idx
+    #                     break
+    #         # effective_cot_mask[i, answer_trigger_start_token:answer_end_token] = 0
+    #     answer_end_token_positions.append(answer_end_token)
+    #     answer_trigger_end_tokens.append(
+    #         answer_trigger_start_token + answer_trigger_token_count
+    #         if answer_trigger_start_token != -1
+    #         else 0
+    #     )
     model_input_ids = completed_tensors
     model_attention_mask = completed_tensors != tokenizer.pad_token_id
     with torch.no_grad():
@@ -342,12 +395,20 @@ def rollout(
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
     mask[:, batch["input_ids"].size(1) - 1 : -1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
-    score_rew[:, -2] = np.array(correctness)
+    # score_rew[:, -2] = np.array(correctness)
+
+    correctness_tensor = torch.tensor(correctness, device=mask.device)
+    score_rew.scatter_(
+        1,
+        last_completed_token.unsqueeze(1),
+        correctness_tensor.unsqueeze(1),
+    )
+
     nonzero = (model_input_ids == tokenizer.eos_token_id).nonzero()
     for bidx, tidx in nonzero:
         mask[bidx][tidx:] = 0
-        score_rew[bidx][tidx:] = 0
-        score_rew[bidx][tidx - 1] = correctness[bidx]
+        # score_rew[bidx][tidx:] = 0
+        # score_rew[bidx][tidx - 1] = correctness[bidx]
 
     # Make the kl reward and the full reward
     kl_rew = None
@@ -410,18 +471,28 @@ def rollout(
         completed_texts_special,
     )
 
+
 def compress_text(text):
-    compressed = zlib.compress(text.encode('utf-8'))
+    compressed = zlib.compress(text.encode("utf-8"))
     b64 = base64.b64encode(compressed)
-    return b64.decode('ascii').replace('+', '-').replace('/', '_').replace('=', '')
+    return b64.decode("ascii").replace("+", "-").replace("/", "_").replace("=", "")
+
 
 def round(tensor, places=5):
-    return torch.round(tensor * 10 ** places) / (10 ** places)
+    return torch.round(tensor * 10**places) / (10**places)
 
 
 # metrics_dict: generated_texts, tasks, input_texts, targets,
 def log_table_metrics(
-    metrics_dict, tokenizer, vpreds, rew, ret, score_rew, kl_rew, global_iter_num, generated_texts_special
+    metrics_dict,
+    tokenizer,
+    vpreds,
+    rew,
+    ret,
+    score_rew,
+    kl_rew,
+    global_iter_num,
+    generated_texts_special,
 ):
     generated_texts = metrics_dict["generation"]
     reward_sums = torch.sum(rew, dim=1)
@@ -434,7 +505,9 @@ def log_table_metrics(
     for i in range(len(generated_texts_special)):
         tokenized_text = tokenizer.tokenize(generated_texts_special[i])
         # replace G and C with spaces/newlines
-        tokenized_text = [t.replace("Ġ", " ").replace("Ċ", "\n") for t in tokenized_text]
+        tokenized_text = [
+            t.replace("Ġ", " ").replace("Ċ", "\n") for t in tokenized_text
+        ]
         visualization_metrics = [
             {
                 "score reward": round(score_rew[i]).tolist(),
@@ -456,7 +529,9 @@ def log_table_metrics(
             "metrics": visualization_metrics,
         }
         json_str = json.dumps(visualization_obj)
-        json_str = json_str.replace(', ', ',').replace('0.0,', '0,').replace('-0,', '0,')
+        json_str = (
+            json_str.replace(", ", ",").replace("0.0,", "0,").replace("-0,", "0,")
+        )
         base64_str = compress_text(json_str)
         links.append(VISUALIZATION_LINK + base64_str)
 
@@ -612,7 +687,7 @@ def train_one_epoch(
                             "dataset": np.array(batch["task"])[b_inds],
                             "input": np.array(batch["prefix_text"])[b_inds],
                             "correct answer": np.array(batch["targets"])[b_inds],
-                            "generation": generated_texts,
+                            "generation": np.array(generated_texts)[b_inds],
                         }
                         log_table_metrics(
                             metrics_dict,
