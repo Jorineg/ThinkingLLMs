@@ -29,6 +29,8 @@ import wandb
 import shutil
 from dotenv import load_dotenv
 from matplotlib import cm
+import zlib
+import base64
 
 load_dotenv()
 
@@ -301,6 +303,9 @@ def rollout(
     completed_texts = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
+    completed_texts_special = tokenizer.batch_decode(
+        completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
+    )
     # programs = [text.split(cot_trigger)[-1] for text in completed_texts]
     programs = extract_completion_batch(completed_texts)
 
@@ -402,12 +407,21 @@ def rollout(
         ref_logprob,
         adv,
         programs,
+        completed_texts_special,
     )
+
+def compress_text(text):
+    compressed = zlib.compress(text.encode('utf-8'))
+    b64 = base64.b64encode(compressed)
+    return b64.decode('ascii').replace('+', '-').replace('/', '_').replace('=', '')
+
+def round(tensor, places=5):
+    return torch.round(tensor * 10 ** places) / (10 ** places)
 
 
 # metrics_dict: generated_texts, tasks, input_texts, targets,
 def log_table_metrics(
-    metrics_dict, tokenizer, vpreds, rew, ret, score_rew, kl_rew, global_iter_num
+    metrics_dict, tokenizer, vpreds, rew, ret, score_rew, kl_rew, global_iter_num, generated_texts_special
 ):
     generated_texts = metrics_dict["generation"]
     reward_sums = torch.sum(rew, dim=1)
@@ -417,17 +431,19 @@ def log_table_metrics(
         for g, e in zip(generated_texts, extracted_ans)
     ]
     links = []
-    for i in range(len(generated_texts)):
-        tokenized_text = tokenizer.tokenize(generated_texts[i])
+    for i in range(len(generated_texts_special)):
+        tokenized_text = tokenizer.tokenize(generated_texts_special[i])
+        # replace G and C with spaces/newlines
+        tokenized_text = [t.replace("Ġ", " ").replace("Ċ", "\n") for t in tokenized_text]
         visualization_metrics = [
             {
-                "score reward": score_rew[i].tolist(),
-                "kl reward": kl_rew[i].tolist(),
-                "reward": rew[i].tolist(),
+                "score reward": round(score_rew[i]).tolist(),
+                "kl reward": round(kl_rew[i]).tolist(),
+                "reward": round(rew[i]).tolist(),
             },
             {
-                "actual value": ret[i].tolist(),
-                "predicted value": vpreds[i].tolist(),
+                "actual value": round(ret[i]).tolist(),
+                "predicted value": round(vpreds[i]).tolist(),
             },
         ]
         normalized_preds = (vpreds[i] / torch.max(vpreds[i])).tolist()
@@ -439,7 +455,10 @@ def log_table_metrics(
             "tokens": tokenized_text,
             "metrics": visualization_metrics,
         }
-        links.append(VISUALIZATION_LINK + json.dumps(visualization_obj))
+        json_str = json.dumps(visualization_obj)
+        json_str = json_str.replace(', ', ',').replace('0.0,', '0,').replace('-0,', '0,')
+        base64_str = compress_text(json_str)
+        links.append(VISUALIZATION_LINK + base64_str)
 
     data = {
         **metrics_dict,
@@ -510,6 +529,7 @@ def train_one_epoch(
                 _,
                 adv,
                 generated_texts,
+                generated_texts_special,
             ) = rollout(
                 args,
                 model,
@@ -589,9 +609,9 @@ def train_one_epoch(
                         and mini_idx == 0
                     ):
                         metrics_dict = {
-                            "dataset": batch["task"][b_inds],
-                            "input": batch["prefix_text"][b_inds],
-                            "correct answer": batch["targets"][b_inds],
+                            "dataset": np.array(batch["task"])[b_inds],
+                            "input": np.array(batch["prefix_text"])[b_inds],
+                            "correct answer": np.array(batch["targets"])[b_inds],
                             "generation": generated_texts,
                         }
                         log_table_metrics(
@@ -603,6 +623,7 @@ def train_one_epoch(
                             cur_score_rew,
                             cur_kl_rew,
                             global_iter_num,
+                            generated_texts_special,
                         )
                     # Compute losses
                     loss = 0
