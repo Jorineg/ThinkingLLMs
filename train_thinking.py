@@ -544,7 +544,7 @@ def log_table_metrics(
         normalized_preds = vpreds[i] / abs_max
         # now we have values between -1 and 1
         # for diverging color map, divide by 2 and add 0.5
-        normalized_preds = normalized_preds / 2 + 0.5
+        normalized_preds = (normalized_preds / 2 + 0.5).tolist()
 
         text_colors = [
             f"rgb{tuple(int(255 * x) for x in cmap(r)[:3])}" for r in normalized_preds
