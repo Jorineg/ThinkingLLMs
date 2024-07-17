@@ -1,3 +1,4 @@
+import math
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
@@ -34,7 +35,7 @@ import base64
 
 load_dotenv()
 
-cmap = cm.get_cmap("viridis")
+cmap = cm.get_cmap("RdYlGn")
 
 tqdm = partial(tqdm, ncols=0, leave=False)
 
@@ -519,7 +520,12 @@ def log_table_metrics(
                 "predicted value": round(vpreds[i]).tolist(),
             },
         ]
-        normalized_preds = (vpreds[i] / torch.max(vpreds[i])).tolist()
+        abs_max = math.max(torch.max(vpreds[i]), torch.abs(torch.min(vpreds[i])))
+        normalized_preds = vpreds[i] / abs_max
+        # now we have values between -1 and 1
+        # for diverging color map, divide by 2 and add 0.5
+        normalized_preds = normalized_preds / 2 + 0.5
+
         text_colors = [
             f"rgb{tuple(int(255 * x) for x in cmap(r)[:3])}" for r in normalized_preds
         ]
