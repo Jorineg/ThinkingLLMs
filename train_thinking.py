@@ -428,16 +428,16 @@ def rollout(
     kl_rew = None
     rew = score_rew
     if ref_logprob is not None:
-        # kl = old_logprob - ref_logprob  # (bs, seqlen-1)
-        # kl = (kl.float() * mask[:, :-1]).cpu().numpy()
-        # kl_rew = np.zeros(mask.shape)  # (bs, seqlen)
-        # kl_rew[:, :-1] = -kl  # NOTE the minus sign
+        kl = old_logprob - ref_logprob  # (bs, seqlen-1)
+        kl = (kl.float() * mask[:, :-1]).cpu().numpy()
+        kl_rew = np.zeros(mask.shape)  # (bs, seqlen)
+        kl_rew[:, :-1] = -kl  # NOTE the minus sign
 
         # other implementation uses distribution accross all tokens and not only generated tokens
-        props = torch.nn.functional.softmax(lm_logits, dim=-1)
-        ref_props = torch.nn.functional.softmax(ref_lm_logits, dim=-1)
-        kl = torch.sum(props * (torch.log(props) - torch.log(ref_props)), dim=-1)
-        kl_rew = (-kl * mask).cpu().numpy()
+        # props = torch.nn.functional.softmax(lm_logits, dim=-1)
+        # ref_props = torch.nn.functional.softmax(ref_lm_logits, dim=-1)
+        # kl = torch.sum(props * (torch.log(props) - torch.log(ref_props)), dim=-1)
+        # kl_rew = (-kl * mask).cpu().numpy()
 
         kl_coef = args["kl_coef"]
         # if iter < 80:
