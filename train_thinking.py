@@ -438,7 +438,7 @@ def rollout(
         props = torch.nn.functional.softmax(lm_logits, dim=-1)
         ref_props = torch.nn.functional.softmax(ref_lm_logits, dim=-1)
         kl = torch.sum(props * (torch.log(props) - torch.log(ref_props)), dim=-1)
-        kl_rew = -kl * mask
+        kl_rew = (-kl * mask).cpu().numpy()
 
         kl_coef = args["kl_coef"]
         # if iter < 80:
