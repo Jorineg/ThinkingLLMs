@@ -306,31 +306,36 @@ def rollout(
     completed_texts = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
-    completed_texts_special = tokenizer.batch_decode(
-        completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
-    )
+    # completed_texts_special = tokenizer.batch_decode(
+    #     completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
+    # )
     programs = extract_completion_batch(completed_texts)
 
     correctness = []
+    token_texts = []
     for i, cot in enumerate(programs):
         target_value = batch["targets"][i]
         reward = compare_and_calculate_reward(cot, target_value)
+        token_text = tokenizer.batch_decode(
+            completed_tensors[i], skip_special_tokens=False
+        )
         correctness.append(reward)
+        token_texts.append(token_text)
 
-    # mask for model input (prompt only, no padding)
-    completion_start_index = batch["input_ids"].shape[1]
-    input_mask = torch.zeros_like(completed_tensors, device=completed_tensors.device)
-    input_mask[:, :completion_start_index] = 1
-    # mask no padding (input output only)
-    no_padding_mask = completed_tensors != tokenizer.pad_token_id
-    input_mask = input_mask & no_padding_mask
-    # mask for model output (output only, no padding)
-    output_mask = no_padding_mask & ~input_mask
+    # # mask for model input (prompt only, no padding)
+    # completion_start_index = batch["input_ids"].shape[1]
+    # input_mask = torch.zeros_like(completed_tensors, device=completed_tensors.device)
+    # input_mask[:, :completion_start_index] = 1
+    # # mask no padding (input output only)
+    # no_padding_mask = completed_tensors != tokenizer.pad_token_id
+    # input_mask = input_mask & no_padding_mask
+    # # mask for model output (output only, no padding)
+    # output_mask = no_padding_mask & ~input_mask
 
-    last_completed_token = torch.tensor(
-        [torch.nonzero(x).max().item() for x in output_mask],
-        device=completed_tensors.device,
-    )
+    # last_completed_token = torch.tensor(
+    #     [torch.nonzero(x).max().item() for x in output_mask],
+    #     device=completed_tensors.device,
+    # )
 
     # answer_trigger_end_tokens = []
     # answer_end_token_positions = []
@@ -416,7 +421,7 @@ def rollout(
 
     nonzero = (model_input_ids == tokenizer.eos_token_id).nonzero()
     for bidx, tidx in nonzero:
-        mask[bidx][tidx+1:] = 0
+        mask[bidx][tidx + 1 :] = 0
         score_rew[bidx][tidx:] = 0
         score_rew[bidx][tidx] = correctness[bidx]
 
@@ -424,10 +429,16 @@ def rollout(
     kl_rew = None
     rew = score_rew
     if ref_logprob is not None:
-        kl = old_logprob - ref_logprob  # (bs, seqlen-1)
-        kl = (kl.float() * mask[:, :-1]).cpu().numpy()
-        kl_rew = np.zeros(mask.shape)  # (bs, seqlen)
-        kl_rew[:, :-1] = -kl  # NOTE the minus sign
+        # kl = old_logprob - ref_logprob  # (bs, seqlen-1)
+        # kl = (kl.float() * mask[:, :-1]).cpu().numpy()
+        # kl_rew = np.zeros(mask.shape)  # (bs, seqlen)
+        # kl_rew[:, :-1] = -kl  # NOTE the minus sign
+
+        # other implementation uses distribution accross all tokens and not only generated tokens
+        props = torch.nn.functional.softmax(lm_logits, dim=-1)
+        ref_props = torch.nn.functional.softmax(ref_lm_logits, dim=-1)
+        kl = torch.sum(props * (torch.log(props) - torch.log(ref_props)), dim=-1)
+        kl_rew = -kl * mask
 
         kl_coef = args["kl_coef"]
         # if iter < 80:
@@ -478,7 +489,7 @@ def rollout(
         ref_logprob,
         adv,
         programs,
-        completed_texts_special,
+        token_texts,
     )
 
 
@@ -502,7 +513,7 @@ def log_table_metrics(
     score_rew,
     kl_rew,
     global_iter_num,
-    generated_texts_special,
+    token_texts,
 ):
     generated_texts = metrics_dict["generation"]
     reward_sums = torch.sum(rew, dim=1)
@@ -512,12 +523,13 @@ def log_table_metrics(
         for g, e in zip(generated_texts, extracted_ans)
     ]
     links = []
-    for i in range(len(generated_texts_special)):
-        tokenized_text = tokenizer.tokenize(generated_texts_special[i])
+    for i in range(len(token_texts)):
+        # tokenized_text = tokenizer.tokenize(generated_texts_special[i])
         # replace G and C with spaces/newlines
-        tokenized_text = [
-            t.replace("Ġ", " ").replace("Ċ", "\n") for t in tokenized_text
-        ]
+        # tokenized_text = [
+        #     t.replace("Ġ", " ").replace("Ċ", "\n") for t in tokenized_text
+        # ]
+        tokenized_text = token_texts[i]
         visualization_metrics = [
             {
                 "score reward": round(score_rew[i]).tolist(),
@@ -544,8 +556,11 @@ def log_table_metrics(
             "metrics": visualization_metrics,
         }
         assert len(tokenized_text) == len(text_colors) and len(text_colors) == len(
-            visualization_metrics[0]["score reward"]), (
-            len(tokenized_text), len(text_colors), len(visualization_metrics[0]["score reward"])
+            visualization_metrics[0]["score reward"]
+        ), (
+            len(tokenized_text),
+            len(text_colors),
+            len(visualization_metrics[0]["score reward"]),
         )
         json_str = json.dumps(visualization_obj)
         json_str = (
@@ -623,7 +638,7 @@ def train_one_epoch(
                 _,
                 adv,
                 generated_texts,
-                generated_texts_special,
+                token_texts,
             ) = rollout(
                 args,
                 model,
@@ -633,7 +648,7 @@ def train_one_epoch(
                 iter=global_iter_num,
             )
 
-            if (accelerator.is_main_process and args["wandb_log"]):
+            if accelerator.is_main_process and args["wandb_log"]:
                 metrics_dict = {
                     "dataset": batch["task"],
                     "input": batch["prefix_text"],
@@ -649,7 +664,7 @@ def train_one_epoch(
                     score_rew,
                     kl_rew,
                     global_iter_num,
-                    generated_texts_special,
+                    token_texts,
                 )
 
             model.train()
