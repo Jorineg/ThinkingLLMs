@@ -398,7 +398,7 @@ def rollout(
     # Masking the last prompt token up untils the token before eos_token_id
     prompt_len = batch["input_ids"].size(1)
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
-    mask[:, batch["input_ids"].size(1) - 1 : -1] = 1
+    mask[:, batch["input_ids"].size(1) : -1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
     # like scatter_ but in numpy
     # np.put_along_axis(
