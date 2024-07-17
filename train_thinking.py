@@ -46,7 +46,7 @@ VISUALIZATION_LINK = "https://jorineg.github.io/js-plots?data="
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 answer_trigger = "ANSWER: "
-cot_trigger = f"BOT: "
+cot_trigger = f"BOT:"
 instruction = ""
 
 answer_trigger_token_count = -1
