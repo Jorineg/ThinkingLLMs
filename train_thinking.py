@@ -1,4 +1,3 @@
-import math
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
@@ -541,7 +540,7 @@ def log_table_metrics(
                 "predicted value": round(vpreds[i]).tolist(),
             },
         ]
-        abs_max = math.max(torch.max(vpreds[i]), torch.abs(torch.min(vpreds[i])))
+        abs_max = max(torch.max(vpreds[i]), torch.abs(torch.min(vpreds[i])))
         normalized_preds = vpreds[i] / abs_max
         # now we have values between -1 and 1
         # for diverging color map, divide by 2 and add 0.5
