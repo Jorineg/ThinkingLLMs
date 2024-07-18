@@ -46,8 +46,10 @@ VISUALIZATION_LINK = "https://jorineg.github.io/js-plots?data="
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 answer_trigger = "ANSWER: "
-cot_trigger = f"BOT:"
-instruction = ""
+# cot_trigger = f"BOT:"
+cot_trigger = f"BOT: "
+# instruction = ""
+instruction = f"Answer the question below. You may think step by step. Indicate your final answer with '{answer_trigger}'"
 
 answer_trigger_token_count = -1
 
