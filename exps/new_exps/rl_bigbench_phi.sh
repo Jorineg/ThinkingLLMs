@@ -7,7 +7,7 @@ engine='nl' # 'python' or 'nl'
 
 model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
 tokenizer_name_or_path="microsoft/Phi-3-mini-4k-instruct"
-ref_model_name_or_path="facebook/galactica-125M"
+ref_model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
 
 reward_correct=1.0
 reward_starts_correct=0.5
