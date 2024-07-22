@@ -1,5 +1,6 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 exp_name="CoT-Collection_nl_phi-3_reft_ft"
 model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_phi-3_reft_01"
 train_file="jeggers/CoT-Collection"
@@ -7,7 +8,7 @@ engine='nl' # 'python' or 'nl'
 
 model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
 tokenizer_name_or_path="microsoft/Phi-3-mini-4k-instruct"
-ref_model_name_or_path="facebook/galactica-125M"
+# ref_model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
 
 reward_correct=1.0
 reward_starts_correct=0.5
@@ -15,9 +16,9 @@ reward_contains_answer_trigger=0.01
 max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'
-batch_size="4"
-mini_batch_size="4"
-eval_batch_size="4"
+batch_size="1"
+mini_batch_size="1"
+eval_batch_size="1"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
@@ -49,7 +50,7 @@ no_policy_loss_steps=30
 
 mkdir -p "${model_dir}"
 accelerate launch \
-        --config_file ./default_config_deepspeed.yaml \
+        --config_file ./default_config.yaml \
         --num_processes=${num_processes} \
         --main_process_port=${main_process_port} \
     train_thinking.py \

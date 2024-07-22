@@ -31,6 +31,13 @@ from dotenv import load_dotenv
 from matplotlib import cm
 import zlib
 import base64
+from peft import LoraConfig, TaskType, get_peft_model
+from pytorch_memlab import LineProfiler, MemReporter
+
+reporter = MemReporter()
+
+# use tensor cores
+
 
 load_dotenv()
 
@@ -288,6 +295,9 @@ def rollout(
 ):
     model.eval()
     with torch.no_grad():
+        # merges lora adapter
+        # accelerator.unwrap_model(model).merge_adapter()
+        # reporter.report()
         gen_output = accelerator.unwrap_model(model).generate(
             input_ids=batch["input_ids"],
             attention_mask=batch["attention_mask"],
@@ -298,6 +308,7 @@ def rollout(
             eos_token_id=tokenizer.eos_token_id,
             max_new_tokens=args["max_gen_length"],
         )
+        # accelerator.unwrap_model(model).unmerge_adapter()
         completed_tensors = gen_output
         completed_tensors = pad_across_processes(
             completed_tensors, dim=1, pad_index=tokenizer.pad_token_id, pad_first=False
@@ -534,7 +545,7 @@ def log_table_metrics(
         visualization_metrics = [
             {
                 "score reward": round(score_rew[i]).tolist(),
-                "kl reward": round(kl_rew[i]).tolist(),
+                "kl reward": round(kl_rew[i]).tolist() if kl_rew is not None else [0],
                 "reward": round(rew[i]).tolist(),
             },
             {
@@ -575,7 +586,7 @@ def log_table_metrics(
         "extracted answer": extracted_ans,
         "cot length": cot_lengths,
         "score reward": torch.sum(score_rew, dim=1).tolist(),
-        "kl reward": torch.sum(kl_rew, dim=1).tolist(),
+        "kl reward": torch.sum(kl_rew, dim=1).tolist() if kl_rew is not None else [-1]*len(extracted_ans),
         # "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
         # "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
         # "answer present reward": torch.sum(
@@ -607,6 +618,7 @@ def train_one_epoch(
     summary_log_dict,
     most_recent_ckpts_paths,
 ):
+    # reporter.report()
     model_dir = args["model_dir"]
     clip_grad_norm = args.get("clip_grad_norm", None)
     vf_coef = args["vf_coef"]
@@ -835,6 +847,9 @@ def train_one_epoch(
                             total_grad_norm = accelerator.clip_grad_norm_(
                                 model.parameters(), clip_grad_norm
                             )
+                    # torch.cuda.empty_cache()
+                    # reporter.report()
+                    # free torch memory
                     optimizer.step()
                     model.zero_grad()
                     optimizer.zero_grad()
@@ -1083,6 +1098,7 @@ def main(args):
     # initialize ref model (if any)
     ref_model = None
     if args["ref_model_name_or_path"]:
+        accelerator.print("loading ref model")
         ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
             args["ref_model_name_or_path"]
         )
@@ -1116,8 +1132,29 @@ def main(args):
         },
     ]
 
-    optimizer = torch.optim.AdamW(
-        optimizer_grouped_parameters, lr=args["learning_rate"], eps=1e-8
+    # print(model)
+
+    # # for phi-3
+    # peft_target_modules = [
+    #     "o_proj",
+    #     "qkv_proj",
+    #     "gate_up_proj",
+    #     "down_proj",
+    # ]
+    # peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1, target_modules=peft_target_modules)
+    # model = get_peft_model(model, peft_config)
+    # model.print_trainable_parameters()
+
+    # # Update optimizer setup for PEFT
+    # optimizer_grouped_parameters = [
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if p.requires_grad],
+    #         "weight_decay": args["weight_decay"],
+    #     }
+    # ]
+
+    optimizer = torch.optim.SGD(
+        optimizer_grouped_parameters, lr=args["learning_rate"], #eps=1e-8
     )
     # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=num_training_steps)
     scheduler = get_constant_schedule_with_warmup(
