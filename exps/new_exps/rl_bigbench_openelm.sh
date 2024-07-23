@@ -6,12 +6,12 @@ model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_phi-3_reft
 train_file="jeggers/CoT-Collection"
 engine='nl' # 'python' or 'nl'
 
-model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
-tokenizer_name_or_path="microsoft/Phi-3-mini-4k-instruct"
-# ref_model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
+model_name_or_path="apple/OpenELM-1_1B-Instruct"
+tokenizer_name_or_path="NousResearch/Llama-2-7b-hf"
+ref_model_name_or_path="apple/OpenELM-1_1B-Instruct"
 
 use_peft=True
-peft_target_modules="o_proj, qkv_proj, gate_up_proj, down_proj"
+peft_target_modules="out_proj, qkv_proj, proj_1, proj_2"
 lora_rank=128
 lora_alpha=128
 reward_correct=1.0
@@ -45,7 +45,7 @@ seed="42"
 max_input_length="140"
 max_gen_length="170"
 wandb_log="True"
-wandb_project="thinking_phi-3"
+wandb_project="thinking_openelm"
 wandb_run_name="${exp_name}"
 
 num_processes='1'
