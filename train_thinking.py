@@ -52,13 +52,21 @@ OUT_COL = "final_target"
 TASK_COL = "dataset"
 VISUALIZATION_LINK = "https://jorineg.github.io/js-plots?data="
 
+# phi 3 chat format
+# <|system|>
+# You are a helpful assistant.<|end|>
+# <|user|>
+# Question?<|end|>
+# <|assistant|>
+
+
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 answer_trigger = "ANSWER: "
-# cot_trigger = f"BOT:"
-cot_trigger = f"BOT: "
+# cot_trigger = f"BOT: "
+cot_trigger = f"<|assistant|>"
 # instruction = ""
-instruction = f"Answer the question below. You may think step by step. Indicate your final answer with '{answer_trigger}'"
+instruction = f"Answer the question below. You may think step by step (short!). Indicate your final answer with '{answer_trigger}'"
 
 answer_trigger_token_count = -1
 
@@ -74,10 +82,16 @@ def format_input_batch(
 
     penalty_announce = [""] * len(input_batch)
     if enable_penalty:
-        penalty_announce = [f"{penalty_trigger} {penalty:.5f}" for penalty in penalties]
+        penalty_announce = [f"{penalty_trigger} {penalty:.5f}\n" for penalty in penalties]
 
+    # return [
+    #     f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
+    #     for input, output, penalty in zip(input_batch, outputs, penalty_announce)
+    # ]
+    
+    # phi 3 version
     return [
-        f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
+        f"<|system|>\n{penalty}{instruction}<|end|>\n<|user|>\n{input}<|end|>\n{cot_trigger}{answer_trigger}{output}"
         for input, output, penalty in zip(input_batch, outputs, penalty_announce)
     ]
 
@@ -163,13 +177,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         answer_trigger_token_count = len(tokenizer(answer_trigger)["input_ids"])
         raw_dataset = load_dataset("jeggers/CoT-Collection")
 
-        # filter out first 3000 samples
-        raw_dataset["train"] = raw_dataset["train"].select(
-            list(range(3000, len(raw_dataset["train"])))
-        )
-
         accelerator.print("Raw data:", raw_dataset)
-
         accelerator.print(f"Using instruction: '{instruction}'")
         accelerator.print(f"Using cot_trigger: '{cot_trigger}'")
         accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
@@ -320,10 +328,19 @@ def rollout(
     completed_texts = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
-    # completed_texts_special = tokenizer.batch_decode(
-    #     completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
-    # )
+    completed_texts_special = tokenizer.batch_decode(
+        completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
+    )
     programs = extract_completion_batch(completed_texts)
+
+    # accelerator.print(completed_texts[0])
+    accelerator.print(completed_texts_special[0])
+    accelerator.print(completed_texts_special[1])
+    accelerator.print(completed_texts_special[2])
+
+
+    
+
 
     correctness = []
     token_texts = []
@@ -536,6 +553,7 @@ def log_table_metrics(
         len(tokenizer(g)["input_ids"]) - len(tokenizer(e)["input_ids"])
         for g, e in zip(generated_texts, extracted_ans)
     ]
+
     links = []
     for i in range(len(token_texts)):
         # tokenized_text = tokenizer.tokenize(generated_texts_special[i])
@@ -1124,7 +1142,7 @@ def main(args):
     if args["ref_model_name_or_path"]:
         accelerator.print("loading ref model")
         ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-            args["ref_model_name_or_path"], trust_remote_code=True
+            args["ref_model_name_or_path"], trust_remote_code=True, load_in_8bit=True
         )
 
     # optimizer
