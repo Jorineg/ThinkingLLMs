@@ -6,14 +6,14 @@ model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_phi-3_reft
 train_file="jeggers/CoT-Collection"
 engine='nl' # 'python' or 'nl'
 
-model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
-tokenizer_name_or_path="microsoft/Phi-3-mini-4k-instruct"
-ref_model_name_or_path="microsoft/Phi-3-mini-4k-instruct"
+model_name_or_path="Qwen/Qwen2-1.5B-Instruct"
+tokenizer_name_or_path="Qwen/Qwen2-1.5B-Instruct"
+ref_model_name_or_path="Qwen/Qwen2-1.5B-Instruct"
 
-pad_token_id=32000
-eos_token_id=32007
+pad_token_id=151643
+eos_token_id=151643
 use_peft=True
-peft_target_modules="o_proj, qkv_proj, gate_up_proj, down_proj"
+peft_target_modules="q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj"
 lora_rank=128
 lora_alpha=128
 reward_correct=1.0
@@ -22,9 +22,9 @@ reward_contains_answer_trigger=0.01
 max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'
-batch_size="12"
-mini_batch_size="12"
-eval_batch_size="12"
+batch_size="2"
+mini_batch_size="2"
+eval_batch_size="2"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
@@ -44,10 +44,10 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="1000"
+max_input_length="140"
 max_gen_length="170"
 wandb_log="True"
-wandb_project="thinking_phi-3"
+wandb_project="thinking_qwen"
 wandb_run_name="${exp_name}"
 
 num_processes='1'
@@ -104,7 +104,5 @@ accelerate launch \
         --peft_target_modules "${peft_target_modules}" \
         --lora_rank "${lora_rank}" \
         --lora_alpha "${lora_alpha}" \
-        --pad_token_id "${pad_token_id}" \
-        --eos_token_id "${eos_token_id}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)

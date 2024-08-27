@@ -24,6 +24,7 @@ from transformers import (
 )
 from trl import AutoModelForCausalLMWithValueHead
 from trl.core import masked_mean, masked_var, masked_whiten, logprobs_from_logits
+from trl.models.modeling_value_head import ValueHead
 import numpy as np
 import wandb
 import shutil
@@ -32,9 +33,10 @@ from matplotlib import cm
 import zlib
 import base64
 from peft import LoraConfig, TaskType, get_peft_model
-from pytorch_memlab import LineProfiler, MemReporter
 
-reporter = MemReporter()
+# from pytorch_memlab import LineProfiler, MemReporter
+
+# reporter = MemReporter()
 
 # use tensor cores
 
@@ -50,13 +52,21 @@ OUT_COL = "final_target"
 TASK_COL = "dataset"
 VISUALIZATION_LINK = "https://jorineg.github.io/js-plots?data="
 
+# phi 3 chat format
+# <|system|>
+# You are a helpful assistant.<|end|>
+# <|user|>
+# Question?<|end|>
+# <|assistant|>
+
+
 penalty_trigger = "Penalty:"
 problem_prefix = "Problem:"
 answer_trigger = "ANSWER: "
-# cot_trigger = f"BOT:"
-cot_trigger = f"BOT: "
+# cot_trigger = f"BOT: "
+cot_trigger = f"<|assistant|>"
 # instruction = ""
-instruction = f"Answer the question below. You may think step by step. Indicate your final answer with '{answer_trigger}'"
+instruction = f"Answer the question below. You may think step by step (short!). Indicate your final answer with '{answer_trigger}'"
 
 answer_trigger_token_count = -1
 
@@ -72,10 +82,16 @@ def format_input_batch(
 
     penalty_announce = [""] * len(input_batch)
     if enable_penalty:
-        penalty_announce = [f"{penalty_trigger} {penalty:.5f}" for penalty in penalties]
+        penalty_announce = [f"{penalty_trigger} {penalty:.5f}\n" for penalty in penalties]
 
+    # return [
+    #     f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
+    #     for input, output, penalty in zip(input_batch, outputs, penalty_announce)
+    # ]
+    
+    # phi 3 version
     return [
-        f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
+        f"<|system|>\n{penalty}{instruction}<|end|>\n<|user|>\n{input}<|end|>\n{cot_trigger}{answer_trigger}{output}"
         for input, output, penalty in zip(input_batch, outputs, penalty_announce)
     ]
 
@@ -161,13 +177,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         answer_trigger_token_count = len(tokenizer(answer_trigger)["input_ids"])
         raw_dataset = load_dataset("jeggers/CoT-Collection")
 
-        # filter out first 3000 samples
-        raw_dataset["train"] = raw_dataset["train"].select(
-            list(range(3000, len(raw_dataset["train"])))
-        )
-
         accelerator.print("Raw data:", raw_dataset)
-
         accelerator.print(f"Using instruction: '{instruction}'")
         accelerator.print(f"Using cot_trigger: '{cot_trigger}'")
         accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
@@ -254,7 +264,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
     )
 
     test_all_dataloader = DataLoader(
-        tokenized_dataset["test"],
+        tokenized_dataset["test_in_dist"],
         shuffle=False,
         batch_size=args["eval_batch_size"],
         num_workers=args["num_workers"],
@@ -318,10 +328,19 @@ def rollout(
     completed_texts = tokenizer.batch_decode(
         completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
     )
-    # completed_texts_special = tokenizer.batch_decode(
-    #     completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
-    # )
+    completed_texts_special = tokenizer.batch_decode(
+        completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
+    )
     programs = extract_completion_batch(completed_texts)
+
+    # accelerator.print(completed_texts[0])
+    accelerator.print(completed_texts_special[0])
+    accelerator.print(completed_texts_special[1])
+    accelerator.print(completed_texts_special[2])
+
+
+    
+
 
     correctness = []
     token_texts = []
@@ -534,6 +553,7 @@ def log_table_metrics(
         len(tokenizer(g)["input_ids"]) - len(tokenizer(e)["input_ids"])
         for g, e in zip(generated_texts, extracted_ans)
     ]
+
     links = []
     for i in range(len(token_texts)):
         # tokenized_text = tokenizer.tokenize(generated_texts_special[i])
@@ -1086,24 +1106,44 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(
         args["tokenizer_name_or_path"], use_fast=True
     )
-    tokenizer.pad_token_id = 1
-    tokenizer.eos_token_id = 2
+
+    tokenizer.pad_token_id = args["pad_token_id"]
+    tokenizer.eos_token_id = args["eos_token_id"]
 
     train_dataloader, test_all_dataloader = prepare_datasets_and_data_loaders(
         args, tokenizer
     )
 
+    # patch AutoModelForCausalLMWithValueHead
+    # Store the original __init__ method
+    original_init = ValueHead.__init__
+
+    def new_init(self, config, **kwargs):
+        if hasattr(config, "model_dim"):
+            config.hidden_size = config.model_dim
+        original_init(self, config, **kwargs)
+
+    # Replace the original __init__ with our new one
+    ValueHead.__init__ = new_init
+
+    peft_config = None
+    if args["use_peft"]:
+        accelerator.print("loading PEFT model")
+        peft_target_modules = args["peft_target_modules"].split(",")
+        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args["lora_rank"], lora_alpha=args["lora_alpha"], lora_dropout=0.1, target_modules=peft_target_modules, use_rslora=True)
+
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
-    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"])
+    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"], trust_remote_code=True, peft_config=peft_config)
+    
+    # model.resize_token_embeddings(len(tokenizer))
+
     # initialize ref model (if any)
     ref_model = None
     if args["ref_model_name_or_path"]:
         accelerator.print("loading ref model")
         ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-            args["ref_model_name_or_path"]
+            args["ref_model_name_or_path"], trust_remote_code=True, load_in_8bit=True
         )
-        # from copy import deepcopy
-        # ref_model = deepcopy(model)
 
     # optimizer
     n_epochs = args["n_epochs"]
@@ -1113,45 +1153,34 @@ def main(args):
         if args["warmup_step"] is not None and args["warmup_step"] >= 0
         else int(0.1 * num_training_steps)
     )
-    optimizer_grouped_parameters = [
-        {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if not any(nd in n for nd in ["bias", "LayerNorm.weight"])
-            ],
-            "weight_decay": args["weight_decay"],
-        },
-        {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if any(nd in n for nd in ["bias", "LayerNorm.weight"])
-            ],
-            "weight_decay": 0.0,
-        },
-    ]
 
-    # print(model)
-
-    # # for phi-3
-    # peft_target_modules = [
-    #     "o_proj",
-    #     "qkv_proj",
-    #     "gate_up_proj",
-    #     "down_proj",
-    # ]
-    # peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1, target_modules=peft_target_modules)
-    # model = get_peft_model(model, peft_config)
-    # model.print_trainable_parameters()
-
-    # # Update optimizer setup for PEFT
-    # optimizer_grouped_parameters = [
-    #     {
-    #         "params": [p for n, p in model.named_parameters() if p.requires_grad],
-    #         "weight_decay": args["weight_decay"],
-    #     }
-    # ]
+    if args["use_peft"]:
+        # optimizer setup for PEFT
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if p.requires_grad],
+                "weight_decay": args["weight_decay"],
+            }
+        ]
+    else:
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in model.named_parameters()
+                    if not any(nd in n for nd in ["bias", "LayerNorm.weight"])
+                ],
+                "weight_decay": args["weight_decay"],
+            },
+            {
+                "params": [
+                    p
+                    for n, p in model.named_parameters()
+                    if any(nd in n for nd in ["bias", "LayerNorm.weight"])
+                ],
+                "weight_decay": 0.0,
+            },
+        ]
 
     optimizer = torch.optim.SGD(
         optimizer_grouped_parameters, lr=args["learning_rate"], #eps=1e-8
@@ -1333,6 +1362,12 @@ if __name__ == "__main__":
         reward_correct: float = field(default=1.0)
         reward_starts_correct: float = field(default=0.5)
         reward_contains_answer_trigger: float = field(default=0.01)
+        use_peft: bool = field(default=False)
+        peft_target_modules: str = field(default="")
+        pad_token_id: int = field(default=1)
+        eos_token_id: int = field(default=2)
+        lora_alpha: int = field(default=32)
+        lora_rank: int = field(default=32)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
