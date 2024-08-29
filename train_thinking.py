@@ -443,7 +443,7 @@ def rollout(
     # Masking the last prompt token up untils the token before eos_token_id
     prompt_len = batch["input_ids"].size(1)
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
-    mask[:, batch["input_ids"].size(1) :] = 1
+    mask[:, batch["input_ids"].size(1) :-1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
     # like scatter_ but in numpy
     # np.put_along_axis(
@@ -465,9 +465,9 @@ def rollout(
 
     nonzero = (model_input_ids == tokenizer.eos_token_id).nonzero()
     for bidx, tidx in nonzero:
-        mask[bidx][tidx + 1 :] = 0
+        mask[bidx][tidx:] = 0
         score_rew[bidx][tidx:] = 0
-        score_rew[bidx][tidx] = correctness[bidx]
+        score_rew[bidx][tidx-1] = correctness[bidx]
 
     # Make the kl reward and the full reward
     kl_rew = None
@@ -484,8 +484,8 @@ def rollout(
         # kl = torch.sum(props * (torch.log(props) - torch.log(ref_props)), dim=-1)
         # kl_rew = (-kl * mask).cpu().numpy()
 
-        for bidx, tidx in nonzero:
-            kl_rew[bidx][tidx:] = 0
+        # for bidx, tidx in nonzero:
+        #     kl_rew[bidx][tidx:] = 0
 
         kl_coef = args["kl_coef"]
         # if iter < 80:
