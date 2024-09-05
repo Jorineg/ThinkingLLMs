@@ -23,9 +23,9 @@ reward_contains_answer_trigger=0.01
 max_per_task=100
 max_test_per_task=100
 keep_num_ckpt='0'
-batch_size="4"
-mini_batch_size="4"
-eval_batch_size="4"
+batch_size="16"
+mini_batch_size="16"
+eval_batch_size="16"
 ppo_epochs="2"
 n_epochs="700"
 num_workers="0"
@@ -51,13 +51,13 @@ wandb_log="True"
 wandb_project="thinking_gemma2"
 wandb_run_name="${exp_name}"
 
-num_processes='1'
+num_processes='2'
 main_process_port='8889'
 no_policy_loss_steps=30
 
 mkdir -p "${model_dir}"
 accelerate launch \
-        --config_file ./default_config.yaml \
+        --config_file ./default_config_deepspeed.yaml \
         --num_processes=${num_processes} \
         --main_process_port=${main_process_port} \
     train_thinking.py \
