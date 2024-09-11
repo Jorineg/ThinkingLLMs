@@ -38,7 +38,14 @@ from peft import LoraConfig, TaskType, get_peft_model
 
 # reporter = MemReporter()
 
-# use tensor cores
+
+
+# Problem 1: wahtscheinlich landen <eos> im finalen string, sodass der reward halbiert wird
+# Problem 2: manchmal gibt es keinen reward trotz korrekter antwort.
+#  Vermutilich ist der reward zu weit hinten und wird durch die Maske abgeschnitten 
+# Problem 3: großer kl reward auf eos token. Entfernen!
+
+
 
 
 load_dotenv()
@@ -61,12 +68,13 @@ VISUALIZATION_LINK = "https://jorineg.github.io/js-plots?data="
 
 
 penalty_trigger = "Penalty:"
-problem_prefix = "Problem:"
+# problem_prefix = "Problem:"
+problem_prefix = ""
 answer_trigger = "ANSWER: "
-# cot_trigger = f"BOT: "
-cot_trigger = f"<|assistant|>"
-# instruction = ""
-instruction = f"Answer the question below. You may think step by step (short!). Indicate your final answer with '{answer_trigger}'"
+cot_trigger = f"BOT: "
+# cot_trigger = f"<|assistant|>"
+instruction = ""
+# instruction = f"Answer the question below. You may think step by step (short!). Indicate your final answer with '{answer_trigger}'"
 
 answer_trigger_token_count = -1
 
@@ -84,16 +92,16 @@ def format_input_batch(
     if enable_penalty:
         penalty_announce = [f"{penalty_trigger} {penalty:.5f}\n" for penalty in penalties]
 
-    # return [
-    #     f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
-    #     for input, output, penalty in zip(input_batch, outputs, penalty_announce)
-    # ]
-    
-    # phi 3 version
     return [
-        f"<|system|>\n{penalty}{instruction}<|end|>\n<|user|>\n{input}<|end|>\n{cot_trigger}{answer_trigger}{output}"
+        f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
         for input, output, penalty in zip(input_batch, outputs, penalty_announce)
     ]
+    
+    # phi 3 version
+    # return [
+    #     f"<|system|>\n{penalty}{instruction}<|end|>\n<|user|>\n{input}<|end|>\n{cot_trigger}{answer_trigger}{output}"
+    #     for input, output, penalty in zip(input_batch, outputs, penalty_announce)
+    # ]
 
 
 # takes a batch of input and completion strings
@@ -102,7 +110,8 @@ def extract_completion_batch(input_and_completion_batch):
     cot_trigger_count_in_instructions = instruction.count(cot_trigger)
     splitted = [res.split(cot_trigger) for res in input_and_completion_batch]
     return [
-        cot_trigger.join(split[cot_trigger_count_in_instructions + 1 :])[1:]
+        # cot_trigger.join(split[cot_trigger_count_in_instructions + 1 :])[1:]
+        cot_trigger.join(split[cot_trigger_count_in_instructions + 1 :])
         for split in splitted
     ]
 
@@ -118,6 +127,10 @@ def extract_answer_cot_batch(answer_cot_batch):
 
 
 def check_answer(extracted_ans, target_answer):
+    if extracted_ans.endswith("<eos>"):
+        extracted_ans = extracted_ans[:-5]
+    extracted_ans = extracted_ans.lower()
+    target_answer = target_answer.lower()
     if extracted_ans.strip() == target_answer:
         return args["reward_correct"]
     if extracted_ans.strip().startswith(target_answer):
@@ -125,7 +138,7 @@ def check_answer(extracted_ans, target_answer):
     return 0
 
 
-def compare_and_calculate_reward(cot, target_answer):
+def compare_and_calculate_reward_cot(cot, target_answer):
     reward = 0
     if answer_trigger in cot:
         extracted_ans = extract_answer_cot_batch([cot])[0]
@@ -189,7 +202,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
             )
 
             formatted_batch = format_input_batch(batch[IN_COL], enable_penalty=False)
-            tokenized_batch = tokenizer(formatted_batch, add_special_tokens=False)
+            tokenized_batch = tokenizer(formatted_batch, add_special_tokens=True)
 
             tokenized_batch["question"] = batch[IN_COL]
             tokenized_batch["prefix_text"] = formatted_batch
@@ -346,7 +359,7 @@ def rollout(
     token_texts = []
     for i, cot in enumerate(programs):
         target_value = batch["targets"][i]
-        reward = compare_and_calculate_reward(cot, target_value)
+        reward = compare_and_calculate_reward_cot(cot, target_value)
         token_text = tokenizer.batch_decode(
             completed_tensors[i], skip_special_tokens=False
         )
@@ -430,7 +443,7 @@ def rollout(
     # Masking the last prompt token up untils the token before eos_token_id
     prompt_len = batch["input_ids"].size(1)
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
-    mask[:, batch["input_ids"].size(1) : -1] = 1
+    mask[:, batch["input_ids"].size(1) :-1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
     # like scatter_ but in numpy
     # np.put_along_axis(
@@ -452,9 +465,9 @@ def rollout(
 
     nonzero = (model_input_ids == tokenizer.eos_token_id).nonzero()
     for bidx, tidx in nonzero:
-        mask[bidx][tidx + 1 :] = 0
+        mask[bidx][tidx:] = 0
         score_rew[bidx][tidx:] = 0
-        score_rew[bidx][tidx] = correctness[bidx]
+        score_rew[bidx][tidx-1] = correctness[bidx]
 
     # Make the kl reward and the full reward
     kl_rew = None
@@ -470,6 +483,9 @@ def rollout(
         # ref_props = torch.nn.functional.softmax(ref_lm_logits, dim=-1)
         # kl = torch.sum(props * (torch.log(props) - torch.log(ref_props)), dim=-1)
         # kl_rew = (-kl * mask).cpu().numpy()
+
+        # for bidx, tidx in nonzero:
+        #     kl_rew[bidx][tidx:] = 0
 
         kl_coef = args["kl_coef"]
         # if iter < 80:
@@ -1078,7 +1094,7 @@ def evaluate_generation(args, model, dataloader, tokenizer):
                 "target": target,
             }
             results.append(cur_res)
-            corr_value += compare_and_calculate_reward(pred_cot, target)
+            corr_value += compare_and_calculate_reward_cot(pred_cot, target)
 
         res_path = args["model_dir"].rstrip("/") + "/" + "_res.json"
         with open(res_path, "w") as f:
@@ -1130,10 +1146,10 @@ def main(args):
     if args["use_peft"]:
         accelerator.print("loading PEFT model")
         peft_target_modules = args["peft_target_modules"].split(",")
-        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args["lora_rank"], lora_alpha=args["lora_alpha"], lora_dropout=0.1, target_modules=peft_target_modules, use_rslora=True)
+        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args["lora_rank"], lora_alpha=args["lora_alpha"], lora_dropout=args["lora_dropout"], target_modules=peft_target_modules, use_rslora=True)
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
-    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"], trust_remote_code=True, peft_config=peft_config)
+    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"], trust_remote_code=True, peft_config=peft_config, attn_implementation="eager")
     
     # model.resize_token_embeddings(len(tokenizer))
 
@@ -1142,7 +1158,7 @@ def main(args):
     if args["ref_model_name_or_path"]:
         accelerator.print("loading ref model")
         ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-            args["ref_model_name_or_path"], trust_remote_code=True, load_in_8bit=True
+            args["ref_model_name_or_path"], trust_remote_code=True, load_in_8bit=False, attn_implementation="eager"
         )
 
     # optimizer
@@ -1368,6 +1384,7 @@ if __name__ == "__main__":
         eos_token_id: int = field(default=2)
         lora_alpha: int = field(default=32)
         lora_rank: int = field(default=32)
+        lora_dropout: float = field(default=0.05)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
