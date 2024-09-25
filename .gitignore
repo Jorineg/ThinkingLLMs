@@ -8,3 +8,6 @@ src/__pycache__/
 setup.sh
 your-name/
 rationales.json
+rationales_old.json
+__pycache__
+out.log
