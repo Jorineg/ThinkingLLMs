@@ -33,6 +33,10 @@ from matplotlib import cm
 import zlib
 import base64
 from peft import LoraConfig, TaskType, get_peft_model
+load_dotenv()
+
+wandb.login(key=os.getenv["WANDB_API_KEY"])
+
 
 # from pytorch_memlab import LineProfiler, MemReporter
 
@@ -45,7 +49,6 @@ from peft import LoraConfig, TaskType, get_peft_model
 # Problem 3: großer kl reward auf eos token. Entfernen!
 
 
-load_dotenv()
 
 cmap = cm.get_cmap("RdYlGn")
 
