@@ -2,7 +2,7 @@ from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from datasets import load_dataset
+from datasets import load_dataset, DatasetDict
 from datetime import timedelta
 from functools import partial
 import json
@@ -193,6 +193,28 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         accelerator.print(f"Using instruction: '{instruction}'")
         accelerator.print(f"Using cot_trigger: '{cot_trigger}'")
         accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
+
+        # repeat samples in dataset for RL stability
+        # use repeat_samples argument
+        # repeat_samples = 0 means no repetition
+        # repeat_samples = 1 means sample is repeated so that there is only one unique sample accross all gpus for each batch
+        # repeat_samples = 2 means sample is repeated so that there is one unique samples accross all gpus for two consecutive batchtes
+        # repeat_samples = 0.5 means sample is repeated so that there are two unique samples accross all gpus for each batch
+
+        total_batch_size = args["batch_size"] * accelerator.num_processes
+        repeat_samples = args["repeat_samples"]
+        num_repetitions = int(repeat_samples * total_batch_size)
+        if num_repetitions > 1:
+            accelerator.print(f"Repeating samples {num_repetitions} times")
+            # repetitions shall be in form aa bb cc
+            new_dataset = {}
+            for split in raw_dataset.keys():
+                df = raw_dataset[split].to_pandas()
+                new_df = df.loc[
+                    df.index.repeat([num_repetitions] * len(df))
+                ].reset_index(drop=True)
+                new_dataset[split] = new_df
+            raw_dataset = DatasetDict(new_dataset)
 
         def tokenize_fn(batch, tokenizer):
             assert tokenizer.eos_token_id is not None, (
@@ -1418,6 +1440,7 @@ if __name__ == "__main__":
         lora_rank: int = field(default=32)
         lora_dropout: float = field(default=0.05)
         value_head_learning_rate: float = field(default=1e-4)
+        repeat_samples: float = field(default=0.0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
