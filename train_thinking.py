@@ -1198,8 +1198,8 @@ def main(args):
             },
         ]
 
-    optimizer = torch.optim.SGD(
-        optimizer_grouped_parameters, lr=args["learning_rate"], #eps=1e-8
+    optimizer = torch.optim.AdamW(
+        optimizer_grouped_parameters, lr=args["learning_rate"], eps=1e-8
     )
     # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=num_training_steps)
     scheduler = get_constant_schedule_with_warmup(
