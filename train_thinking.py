@@ -39,13 +39,10 @@ from peft import LoraConfig, TaskType, get_peft_model
 # reporter = MemReporter()
 
 
-
 # Problem 1: wahtscheinlich landen <eos> im finalen string, sodass der reward halbiert wird
 # Problem 2: manchmal gibt es keinen reward trotz korrekter antwort.
-#  Vermutilich ist der reward zu weit hinten und wird durch die Maske abgeschnitten 
+#  Vermutilich ist der reward zu weit hinten und wird durch die Maske abgeschnitten
 # Problem 3: großer kl reward auf eos token. Entfernen!
-
-
 
 
 load_dotenv()
@@ -90,13 +87,15 @@ def format_input_batch(
 
     penalty_announce = [""] * len(input_batch)
     if enable_penalty:
-        penalty_announce = [f"{penalty_trigger} {penalty:.5f}\n" for penalty in penalties]
+        penalty_announce = [
+            f"{penalty_trigger} {penalty:.5f}\n" for penalty in penalties
+        ]
 
     return [
         f"{penalty}{input}\n{cot_trigger}{answer_trigger}{output}"
         for input, output, penalty in zip(input_batch, outputs, penalty_announce)
     ]
-    
+
     # phi 3 version
     # return [
     #     f"<|system|>\n{penalty}{instruction}<|end|>\n<|user|>\n{input}<|end|>\n{cot_trigger}{answer_trigger}{output}"
@@ -351,10 +350,6 @@ def rollout(
     accelerator.print(completed_texts_special[1])
     accelerator.print(completed_texts_special[2])
 
-
-    
-
-
     correctness = []
     token_texts = []
     for i, cot in enumerate(programs):
@@ -443,7 +438,7 @@ def rollout(
     # Masking the last prompt token up untils the token before eos_token_id
     prompt_len = batch["input_ids"].size(1)
     mask = torch.zeros_like(model_input_ids, dtype=torch.bool)  # (bs, seqlen)
-    mask[:, batch["input_ids"].size(1) :-1] = 1
+    mask[:, batch["input_ids"].size(1) : -1] = 1
     score_rew = np.zeros(mask.shape)  # (bs, seqlen)
     # like scatter_ but in numpy
     # np.put_along_axis(
@@ -467,7 +462,7 @@ def rollout(
     for bidx, tidx in nonzero:
         mask[bidx][tidx:] = 0
         score_rew[bidx][tidx:] = 0
-        score_rew[bidx][tidx-1] = correctness[bidx]
+        score_rew[bidx][tidx - 1] = correctness[bidx]
 
     # Make the kl reward and the full reward
     kl_rew = None
@@ -622,7 +617,11 @@ def log_table_metrics(
         "extracted answer": extracted_ans,
         "cot length": cot_lengths,
         "score reward": torch.sum(score_rew, dim=1).tolist(),
-        "kl reward": torch.sum(kl_rew, dim=1).tolist() if kl_rew is not None else [-1]*len(extracted_ans),
+        "kl reward": (
+            torch.sum(kl_rew, dim=1).tolist()
+            if kl_rew is not None
+            else [-1] * len(extracted_ans)
+        ),
         # "penalty reward": torch.sum(cot_penalty_rew, dim=1).tolist(),
         # "max len reward": torch.sum(max_gen_length_penalty_rew, dim=1).tolist(),
         # "answer present reward": torch.sum(
@@ -1146,11 +1145,24 @@ def main(args):
     if args["use_peft"]:
         accelerator.print("loading PEFT model")
         peft_target_modules = args["peft_target_modules"].split(",")
-        peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args["lora_rank"], lora_alpha=args["lora_alpha"], lora_dropout=args["lora_dropout"], target_modules=peft_target_modules, use_rslora=True)
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            r=args["lora_rank"],
+            lora_alpha=args["lora_alpha"],
+            lora_dropout=args["lora_dropout"],
+            target_modules=peft_target_modules,
+            use_rslora=True,
+        )
 
     MODEL_CLASS = AutoModelForCausalLMWithValueHead
-    model = MODEL_CLASS.from_pretrained(args["model_name_or_path"], trust_remote_code=True, peft_config=peft_config, attn_implementation="eager")
-    
+    model = MODEL_CLASS.from_pretrained(
+        args["model_name_or_path"],
+        trust_remote_code=True,
+        peft_config=peft_config,
+        attn_implementation="eager",
+    )
+
     # model.resize_token_embeddings(len(tokenizer))
 
     # initialize ref model (if any)
@@ -1158,7 +1170,10 @@ def main(args):
     if args["ref_model_name_or_path"]:
         accelerator.print("loading ref model")
         ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
-            args["ref_model_name_or_path"], trust_remote_code=True, load_in_8bit=False, attn_implementation="eager"
+            args["ref_model_name_or_path"],
+            trust_remote_code=True,
+            load_in_8bit=False,
+            attn_implementation="eager",
         )
 
     # optimizer
@@ -1176,18 +1191,22 @@ def main(args):
             {
                 "params": [p for n, p in model.named_parameters() if p.requires_grad],
                 "weight_decay": args["weight_decay"],
+                "lr": args["learning_rate"],
             }
         ]
     else:
         optimizer_grouped_parameters = [
+            # Parameters excluding bias and LayerNorm (use weight decay)
             {
                 "params": [
                     p
                     for n, p in model.named_parameters()
-                    if not any(nd in n for nd in ["bias", "LayerNorm.weight"])
+                    if not any(nd in n for nd in ["bias", "LayerNorm.weight", "v_head"])
                 ],
                 "weight_decay": args["weight_decay"],
+                "lr": args["learning_rate"],  # Main LLM learning rate
             },
+            # Bias and LayerNorm parameters (no weight decay)
             {
                 "params": [
                     p
@@ -1195,6 +1214,19 @@ def main(args):
                     if any(nd in n for nd in ["bias", "LayerNorm.weight"])
                 ],
                 "weight_decay": 0.0,
+                "lr": args["learning_rate"],  # Same LR for bias and LayerNorm
+            },
+            # Value head parameters (separate learning rate)
+            {
+                "params": [
+                    p
+                    for n, p in model.named_parameters()
+                    if "v_head" in n  # Assuming the value head layer is named like this
+                ],
+                "weight_decay": args["weight_decay"],
+                "lr": args[
+                    "value_head_learning_rate"
+                ],  # Set a different LR for value head
             },
         ]
 
@@ -1385,6 +1417,7 @@ if __name__ == "__main__":
         lora_alpha: int = field(default=32)
         lora_rank: int = field(default=32)
         lora_dropout: float = field(default=0.05)
+        value_head_learning_rate: float = field(default=1e-4)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()

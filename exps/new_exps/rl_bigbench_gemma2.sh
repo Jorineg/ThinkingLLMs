@@ -50,6 +50,7 @@ max_gen_length="200"
 wandb_log="True"
 wandb_project="thinking_gemma2"
 wandb_run_name="${exp_name}"
+value_head_learning_rate="5e-4"
 
 num_processes='2'
 main_process_port='8889'
