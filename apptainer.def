@@ -1,0 +1,9 @@
+Bootstrap: docker
+From: python:3.10
+
+%files
+    $PWD/requirements.txt requirements.txt
+
+%post
+    chmod 1777 /tmp  # necessary in case one wants to use apt on our cluster (this can also be done outside the .def file)
+    pip install --root-user-action=ignore -r requirements.txt
