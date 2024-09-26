@@ -11,3 +11,5 @@ rationales.json
 rationales_old.json
 __pycache__
 out.log
+python_container.sif
+logs
