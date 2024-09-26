@@ -1,6 +1,6 @@
-torch
-torchvision
-torchaudio
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
 wandb
 git+https://github.com/huggingface/transformers
 accelerate>=0.26.0
