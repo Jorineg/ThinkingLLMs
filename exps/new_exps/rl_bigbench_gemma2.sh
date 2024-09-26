@@ -51,6 +51,7 @@ wandb_log="True"
 wandb_project="thinking_gemma2"
 wandb_run_name="${exp_name}"
 value_head_learning_rate="5e-4"
+repeat_samples="1"
 
 num_processes='2'
 main_process_port='8889'
@@ -109,5 +110,7 @@ accelerate launch \
         --lora_dropout "${lora_dropout}" \
         --pad_token_id "${pad_token_id}" \
         --eos_token_id "${eos_token_id}" \
+        --value_head_learning_rate "${value_head_learning_rate}" \
+        --repeat_samples "${repeat_samples}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)
