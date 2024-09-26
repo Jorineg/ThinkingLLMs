@@ -5,7 +5,7 @@ from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from datasets import load_dataset, DatasetDict
+from datasets import load_dataset, DatasetDict, Dataset
 from datetime import timedelta
 from functools import partial
 import json
@@ -215,7 +215,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
                 new_df = df.loc[
                     df.index.repeat([num_repetitions] * len(df))
                 ].reset_index(drop=True)
-                new_dataset[split] = new_df
+                new_dataset[split] = Dataset.from_pandas(new_df)
             raw_dataset = DatasetDict(new_dataset)
 
         def tokenize_fn(batch, tokenizer):
