@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+
 load_dotenv()
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
@@ -46,7 +47,6 @@ wandb.login(key=os.getenv("WANDB_API_KEY"))
 # Problem 2: manchmal gibt es keinen reward trotz korrekter antwort.
 #  Vermutilich ist der reward zu weit hinten und wird durch die Maske abgeschnitten
 # Problem 3: großer kl reward auf eos token. Entfernen!
-
 
 
 cmap = cm.get_cmap("RdYlGn")
@@ -1236,6 +1236,7 @@ def main(args):
                     p
                     for n, p in model.named_parameters()
                     if any(nd in n for nd in ["bias", "LayerNorm.weight"])
+                    and not "v_head" in n
                 ],
                 "weight_decay": 0.0,
                 "lr": args["learning_rate"],  # Same LR for bias and LayerNorm
@@ -1245,9 +1246,22 @@ def main(args):
                 "params": [
                     p
                     for n, p in model.named_parameters()
-                    if "v_head" in n  # Assuming the value head layer is named like this
+                    if "v_head" in n
+                    and not any(nd in n for nd in ["bias", "LayerNorm.weight"])
                 ],
                 "weight_decay": args["weight_decay"],
+                "lr": args[
+                    "value_head_learning_rate"
+                ],  # Set a different LR for value head
+            },
+            {
+                "params": [
+                    p
+                    for n, p in model.named_parameters()
+                    if "v_head" in n
+                    and any(nd in n for nd in ["bias", "LayerNorm.weight"])
+                ],
+                "weight_decay": 0.0,
                 "lr": args[
                     "value_head_learning_rate"
                 ],  # Set a different LR for value head
