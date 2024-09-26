@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.utils import pad_across_processes, broadcast
 from collections import defaultdict
@@ -28,15 +30,12 @@ from trl.models.modeling_value_head import ValueHead
 import numpy as np
 import wandb
 import shutil
-from dotenv import load_dotenv
 from matplotlib import cm
 import zlib
 import base64
 from peft import LoraConfig, TaskType, get_peft_model
-load_dotenv()
 
-wandb.login(key=os.getenv["WANDB_API_KEY"])
-
+wandb.login(key=os.getenv("WANDB_API_KEY"))
 
 # from pytorch_memlab import LineProfiler, MemReporter
 
