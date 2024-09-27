@@ -196,28 +196,6 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         accelerator.print(f"Using cot_trigger: '{cot_trigger}'")
         accelerator.print(f"Using answer_trigger: '{answer_trigger}'")
 
-        # repeat samples in dataset for RL stability
-        # use repeat_samples argument
-        # repeat_samples = 0 means no repetition
-        # repeat_samples = 1 means sample is repeated so that there is only one unique sample accross all gpus for each batch
-        # repeat_samples = 2 means sample is repeated so that there is one unique samples accross all gpus for two consecutive batchtes
-        # repeat_samples = 0.5 means sample is repeated so that there are two unique samples accross all gpus for each batch
-
-        total_batch_size = args["batch_size"] * accelerator.num_processes
-        repeat_samples = args["repeat_samples"]
-        num_repetitions = int(repeat_samples * total_batch_size)
-        if num_repetitions > 1:
-            accelerator.print(f"Repeating samples {num_repetitions} times")
-            # repetitions shall be in form aa bb cc
-            new_dataset = {}
-            for split in raw_dataset.keys():
-                df = raw_dataset[split].to_pandas()
-                new_df = df.loc[
-                    df.index.repeat([num_repetitions] * len(df))
-                ].reset_index(drop=True)
-                new_dataset[split] = Dataset.from_pandas(new_df)
-            raw_dataset = DatasetDict(new_dataset)
-
         def tokenize_fn(batch, tokenizer):
             assert tokenizer.eos_token_id is not None, (
                 tokenizer.eos_token_id,
@@ -253,6 +231,29 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
         )
 
         accelerator.print("Processed data:", tokenized_dataset)
+
+        # repeat samples in dataset for RL stability
+        # use repeat_samples argument
+        # repeat_samples = 0 means no repetition
+        # repeat_samples = 1 means sample is repeated so that there is only one unique sample accross all gpus for each batch
+        # repeat_samples = 2 means sample is repeated so that there is one unique samples accross all gpus for two consecutive batchtes
+        # repeat_samples = 0.5 means sample is repeated so that there are two unique samples accross all gpus for each batch
+
+        total_batch_size = args["batch_size"] * accelerator.num_processes
+        repeat_samples = args["repeat_samples"]
+        num_repetitions = int(repeat_samples * total_batch_size)
+        if num_repetitions > 1:
+            accelerator.print(f"Repeating samples {num_repetitions} times")
+            # repetitions shall be in form aa bb cc
+            new_dataset = {}
+            for split in tokenized_dataset.keys():
+                df = tokenized_dataset[split].to_pandas()
+                new_df = df.loc[
+                    df.index.repeat([num_repetitions] * len(df))
+                ].reset_index(drop=True)
+                new_dataset[split] = Dataset.from_pandas(new_df)
+            tokenized_dataset = DatasetDict(new_dataset)
+            accelerator.print("Repeated data:", tokenized_dataset)
 
         if accelerator.is_main_process and args["wandb_log"]:
             wandb.config.update(
