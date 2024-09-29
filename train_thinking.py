@@ -293,7 +293,7 @@ def prepare_datasets_and_data_loaders(args, tokenizer):
 
     train_dataloader = DataLoader(
         tokenized_dataset["train"],
-        shuffle=True,
+        shuffle=False,
         batch_size=args["batch_size"],
         num_workers=args["num_workers"],
         pin_memory=True,
