@@ -2,17 +2,21 @@
 export TOKENIZERS_PARALLELISM=True
 exp_name="CoT-Collection_nl_galactica_125m_reft_ft"
 model_dir="thinking_models/_models_outputs_rl_small/CoT-Collection_nl_galactica_125m_reft_01"
-# train_file="data/gsm8k_python_sdp.json"
-# test_file="data/gsm8k_test_set.json"
 train_file="jeggers/CoT-Collection"
 engine='nl' # 'python' or 'nl'
 
 model_name_or_path="jeggers/galactica-125m-cot"
 tokenizer_name_or_path="jeggers/galactica-125m-cot"
 ref_model_name_or_path="jeggers/galactica-125m-cot"
-
+pad_token_id=1
+eos_token_id=2
+use_peft=False
+peft_target_modules="q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj"
+lora_rank=256
+lora_alpha=256
+lora_dropout=0.05
 reward_correct=1.0
-reward_starts_correct=0.5
+reward_starts_correct=0.0
 reward_contains_answer_trigger=0.01
 max_per_task=100
 max_test_per_task=100
@@ -39,13 +43,15 @@ evaluating_step_freq="-100"
 logging_step_freq="1"
 saving_step_freq="-100"
 seed="42"
-max_input_length="140"
-max_gen_length="170"
+max_input_length="1000"
+max_gen_length="1000"
 wandb_log="True"
 wandb_project="thinking_small"
 wandb_run_name="${exp_name}"
+value_head_learning_rate="5e-4"
+repeat_samples="0"
 
-num_processes='1'
+num_processes='2'
 main_process_port='8889'
 no_policy_loss_steps=30
 
@@ -95,5 +101,14 @@ accelerate launch \
         --reward_correct "${reward_correct}" \
         --reward_starts_correct "${reward_starts_correct}" \
         --reward_contains_answer_trigger "${reward_contains_answer_trigger}" \
+        --use_peft "${use_peft}" \
+        --peft_target_modules "${peft_target_modules}" \
+        --lora_rank "${lora_rank}" \
+        --lora_alpha "${lora_alpha}" \
+        --lora_dropout "${lora_dropout}" \
+        --pad_token_id "${pad_token_id}" \
+        --eos_token_id "${eos_token_id}" \
+        --value_head_learning_rate "${value_head_learning_rate}" \
+        --repeat_samples "${repeat_samples}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)
