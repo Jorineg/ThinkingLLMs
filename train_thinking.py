@@ -374,16 +374,16 @@ def rollout(
     )
     programs = extract_completion_batch(completed_texts)
 
-    # generated_token_counts = [
-    #     len(generation) - len(prefix)
-    #     for generation, prefix in zip(compelted_tensors_cpu_list, batch["prefix_text"])
-    # ]
-    # print(f"Generated token counts: {generated_token_counts}")
+    generated_token_counts = [
+        len(generation) - len(prefix)
+        for generation, prefix in zip(compelted_tensors_cpu_list, batch["prefix_text"])
+    ]
+    print(f"Generated token counts: {generated_token_counts}")
 
     # accelerator.print(completed_texts[0])
-    accelerator.print(completed_texts_special[0])
-    accelerator.print(completed_texts_special[1])
-    accelerator.print(completed_texts_special[2])
+    # accelerator.print(completed_texts_special[0])
+    # accelerator.print(completed_texts_special[1])
+    # accelerator.print(completed_texts_special[2])
 
     correctness = []
     token_texts = []
@@ -394,7 +394,8 @@ def rollout(
             completed_tensors[i], skip_special_tokens=False
         )
 
-        token_count = len(token_text)
+        # token_count = len(token_text)
+        token_count = generated_token_counts[i]
         if token_count < args["no_cot_threshold"]:
             reward += args["reward_no_cot"]
 
