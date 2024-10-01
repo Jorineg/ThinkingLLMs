@@ -1068,8 +1068,8 @@ def evaluate_generation(args, model, dataloader, tokenizer):
     model.eval()
     predictions = []
     targets = []
-    for idx, batch in tqdm(
-        enumerate(dataloader),
+    for batch in tqdm(
+        dataloader,
         total=len(dataloader),
         disable=not accelerator.is_main_process,
         desc="Evaluation Gen Loop",
@@ -1089,7 +1089,13 @@ def evaluate_generation(args, model, dataloader, tokenizer):
             generated_ids, dim=1, pad_index=tokenizer.pad_token_id, pad_first=True
         )
 
-        generated_ids = accelerator.gather(generated_ids)
+        # generated_ids = accelerator.gather(generated_ids)
+        gathered = accelerator.gather_for_metrics([generated_ids, batch["target"]])
+        generated_ids, target = [], []
+
+        if accelerator.is_main_process:
+            generated_ids = [item for sublist in gathered[::2] for item in sublist]
+            target = [item for sublist in gathered[1::2] for item in sublist]
 
         preds = [
             tokenizer.decode(
@@ -1100,7 +1106,6 @@ def evaluate_generation(args, model, dataloader, tokenizer):
             for g in generated_ids
         ]
         predictions.extend(preds)
-        target = batch["targets"]
         targets.extend(target)
 
     # predictions = predictions[: len(dataset)]
