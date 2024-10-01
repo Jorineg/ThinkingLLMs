@@ -52,6 +52,7 @@ value_head_learning_rate="5e-4"
 repeat_samples="0"
 reward_no_cot="0.0"
 no_cot_threshold="50"
+unfreeze_policy_after_n_steps="200"
 
 num_processes='2'
 main_process_port='8889'
@@ -114,5 +115,6 @@ accelerate launch \
         --repeat_samples "${repeat_samples}" \
         --reward_no_cot "${reward_no_cot}" \
         --no_cot_threshold "${no_cot_threshold}" \
+        --unfreeze_policy_after_n_steps "${unfreeze_policy_after_n_steps}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)

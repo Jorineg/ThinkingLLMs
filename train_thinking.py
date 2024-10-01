@@ -77,6 +77,8 @@ instruction = ""
 
 answer_trigger_token_count = -1
 
+policy_model_frozen = True
+
 
 def format_input_batch(
     input_batch, enable_penalty=True, penalties=None, answer_trigger="", outputs=None
@@ -707,6 +709,14 @@ def train_one_epoch(
         desc="Train Loop",
     ) as t:
         for idx, batch in t:
+            
+            if policy_model_frozen and global_iter_num>=args["unfreeze_policy_after_n_steps"]:
+                policy_model_frozen = False
+                for param_group in optimizer.param_groups:
+                    if param_group['lr'] == 0.0:  # This is the policy part (frozen)
+                        param_group['lr'] = args["learning_rate"]  # Set a new learning rate for policy part
+                print("-------Unfreezing policy model-------")
+
             result_dict = defaultdict(list)
             # Do rollout first
             model.eval()
@@ -1247,7 +1257,8 @@ def main(args):
                     if not any(nd in n for nd in ["bias", "LayerNorm.weight", "v_head"])
                 ],
                 "weight_decay": args["weight_decay"],
-                "lr": args["learning_rate"],  # Main LLM learning rate
+                # "lr": args["learning_rate"],  # Main LLM learning rate
+                "lr": 0,
             },
             # Bias and LayerNorm parameters (no weight decay)
             {
@@ -1258,7 +1269,8 @@ def main(args):
                     and not "v_head" in n
                 ],
                 "weight_decay": 0.0,
-                "lr": args["learning_rate"],  # Same LR for bias and LayerNorm
+                # "lr": args["learning_rate"],  # Same LR for bias and LayerNorm
+                "lr": 0,
             },
             # Value head parameters (separate learning rate)
             {
@@ -1478,6 +1490,7 @@ if __name__ == "__main__":
         repeat_samples: float = field(default=0.0)
         reward_no_cot: float = field(default=0.0)
         no_cot_threshold: int = field(default=0)
+        unfreeze_policy_after_n_steps: int = field(default=0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
