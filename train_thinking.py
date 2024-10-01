@@ -693,6 +693,7 @@ def train_one_epoch(
     summary_log_dict,
     most_recent_ckpts_paths,
 ):
+    global policy_model_frozen
     # reporter.report()
     model_dir = args["model_dir"]
     clip_grad_norm = args.get("clip_grad_norm", None)
