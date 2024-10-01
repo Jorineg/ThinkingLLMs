@@ -374,12 +374,6 @@ def rollout(
     )
     programs = extract_completion_batch(completed_texts)
 
-    generated_token_counts = [
-        len(generation) - len(prefix)
-        for generation, prefix in zip(compelted_tensors_cpu_list, batch["prefix_text"])
-    ]
-    print(f"Generated token counts: {generated_token_counts}")
-
     # accelerator.print(completed_texts[0])
     # accelerator.print(completed_texts_special[0])
     # accelerator.print(completed_texts_special[1])
@@ -394,8 +388,19 @@ def rollout(
             completed_tensors[i], skip_special_tokens=False
         )
 
+        this_tensor = completed_tensors[i]
+        # mask m that in shape of this_tensor, filled with 0
+        m = torch.zeros_like(this_tensor)
+        # make m=1 starting from end of batch["input_ids"] to end of this_tensor
+        m[len(batch["input_ids"][i]) :] = 1
+        # make m=0 where this_tensor is padding
+        m = m * (this_tensor != tokenizer.pad_token_id)
+
+        token_count = m.sum().item()
+
+        print(token_count, end=", ")
         # token_count = len(token_text)
-        token_count = generated_token_counts[i]
+        # token_count = generated_token_counts[i]
         if token_count < args["no_cot_threshold"]:
             reward += args["reward_no_cot"]
 
