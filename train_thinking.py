@@ -710,12 +710,17 @@ def train_one_epoch(
         desc="Train Loop",
     ) as t:
         for idx, batch in t:
-            
-            if policy_model_frozen and global_iter_num>=args["unfreeze_policy_after_n_steps"]:
+
+            if (
+                policy_model_frozen
+                and global_iter_num >= args["unfreeze_policy_after_n_steps"]
+            ):
                 policy_model_frozen = False
                 for param_group in optimizer.param_groups:
-                    if param_group['lr'] == 0.0:  # This is the policy part (frozen)
-                        param_group['lr'] = args["learning_rate"]  # Set a new learning rate for policy part
+                    if param_group["lr"] == 0.0:  # This is the policy part (frozen)
+                        param_group["lr"] = args[
+                            "learning_rate"
+                        ]  # Set a new learning rate for policy part
                 print("-------Unfreezing policy model-------")
 
             result_dict = defaultdict(list)
@@ -1114,7 +1119,7 @@ def evaluate_generation(args, model, dataloader, tokenizer):
         )
 
         # generated_ids = accelerator.gather(generated_ids)
-        gathered = accelerator.gather_for_metrics([generated_ids, batch["target"]])
+        gathered = accelerator.gather_for_metrics([generated_ids, batch["targets"]])
         generated_ids, target = [], []
 
         if accelerator.is_main_process:
