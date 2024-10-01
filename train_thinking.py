@@ -361,14 +361,22 @@ def rollout(
             completed_tensors, dim=1, pad_index=tokenizer.pad_token_id, pad_first=False
         )
 
+    compelted_tensors_cpu_list = completed_tensors.cpu().numpy().tolist()
+
     # Evaluate score
     completed_texts = tokenizer.batch_decode(
-        completed_tensors.cpu().numpy().tolist(), skip_special_tokens=True
+        compelted_tensors_cpu_list, skip_special_tokens=True
     )
     completed_texts_special = tokenizer.batch_decode(
-        completed_tensors.cpu().numpy().tolist(), skip_special_tokens=False
+        compelted_tensors_cpu_list, skip_special_tokens=False
     )
     programs = extract_completion_batch(completed_texts)
+
+    # generated_token_counts = [
+    #     len(generation) - len(prefix)
+    #     for generation, prefix in zip(compelted_tensors_cpu_list, batch["prefix_text"])
+    # ]
+    # print(f"Generated token counts: {generated_token_counts}")
 
     # accelerator.print(completed_texts[0])
     accelerator.print(completed_texts_special[0])
@@ -383,6 +391,11 @@ def rollout(
         token_text = tokenizer.batch_decode(
             completed_tensors[i], skip_special_tokens=False
         )
+
+        token_count = len(token_text)
+        if token_count < args["no_cot_threshold"]:
+            reward += args["reward_no_cot"]
+
         correctness.append(reward)
         token_texts.append(token_text)
 
@@ -1463,6 +1476,8 @@ if __name__ == "__main__":
         lora_dropout: float = field(default=0.05)
         value_head_learning_rate: float = field(default=1e-4)
         repeat_samples: float = field(default=0.0)
+        reward_no_cot: float = field(default=0.0)
+        no_cot_threshold: int = field(default=0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
