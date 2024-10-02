@@ -1321,9 +1321,9 @@ def main(args):
 
     # torch compile generate function
     torch._dynamo.config.suppress_errors = True
+    model.generate = torch.compile(model.generate)
     torch.set_float32_matmul_precision('high')
     
-    model.generate = torch.compile(model.generate)
 
     model, optimizer, train_dataloader, test_all_dataloader = accelerator.prepare(
         model, optimizer, train_dataloader, test_all_dataloader
