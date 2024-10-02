@@ -1308,7 +1308,8 @@ def main(args):
                     return [
                         (
                             0.0
-                            if group["params"].shape
+                            if len(group["params"]) > 0
+                            and group["params"][0].shape
                             != model.v_head.summary.weight.shape
                             else 1.0
                         )
@@ -1323,7 +1324,6 @@ def main(args):
         optimizer_grouped_parameters, lr=args["learning_rate"], eps=1e-8
     )
 
-    print(optimizer.param_groups)
     # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=num_training_steps)
     # scheduler = get_constant_schedule_with_warmup(
     #     optimizer, num_warmup_steps=warmup_step
