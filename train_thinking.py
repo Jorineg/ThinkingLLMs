@@ -35,6 +35,7 @@ from matplotlib import cm
 import zlib
 import base64
 from peft import LoraConfig, TaskType, get_peft_model
+from torch.optim.lr_scheduler import LambdaLR
 
 wandb.login(key=os.getenv("WANDB_API_KEY"))
 
@@ -718,19 +719,6 @@ def train_one_epoch(
         desc="Train Loop",
     ) as t:
         for idx, batch in t:
-
-            # if (
-            #     policy_model_frozen
-            #     and global_iter_num >= args["unfreeze_policy_after_n_steps"]
-            # ):
-            #     policy_model_frozen = False
-            #     for param_group in optimizer.param_groups:
-            #         if param_group["lr"] == 0.0:  # This is the policy part (frozen)
-            #             param_group["lr"] = args[
-            #                 "learning_rate"
-            #             ]  # Set a new learning rate for policy part
-            #     print("-------Unfreezing policy model-------")
-
             result_dict = defaultdict(list)
             # Do rollout first
             model.eval()
@@ -1272,7 +1260,6 @@ def main(args):
                 ],
                 "weight_decay": args["weight_decay"],
                 "lr": args["learning_rate"],  # Main LLM learning rate
-                # "lr": 0,
             },
             # Bias and LayerNorm parameters (no weight decay)
             {
@@ -1284,7 +1271,6 @@ def main(args):
                 ],
                 "weight_decay": 0.0,
                 "lr": args["learning_rate"],  # Same LR for bias and LayerNorm
-                # "lr": 0,
             },
             # Value head parameters (separate learning rate)
             {
@@ -1313,12 +1299,36 @@ def main(args):
             },
         ]
 
+    class PolicyFreezingScheduler(LambdaLR):
+        def __init__(self, optimizer, freeze_steps, last_epoch=-1):
+            self.freeze_steps = freeze_steps
+
+            def lr_lambda(current_step: int):
+                if current_step < freeze_steps:
+                    return [
+                        (
+                            0.0
+                            if group["params"][0].shape
+                            != model.v_head.summary.weight.shape
+                            else 1.0
+                        )
+                        for group in optimizer.param_groups
+                    ]
+                else:
+                    return [1.0 for _ in optimizer.param_groups]
+
+            super().__init__(optimizer, lr_lambda, last_epoch)
+
     optimizer = torch.optim.AdamW(
         optimizer_grouped_parameters, lr=args["learning_rate"], eps=1e-8
     )
     # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=num_training_steps)
-    scheduler = get_constant_schedule_with_warmup(
-        optimizer, num_warmup_steps=warmup_step
+    # scheduler = get_constant_schedule_with_warmup(
+    #     optimizer, num_warmup_steps=warmup_step
+    # )
+
+    scheduler = PolicyFreezingScheduler(
+        optimizer, args["unfreeze_policy_after_n_steps"]
     )
 
     # torch compile generate function
