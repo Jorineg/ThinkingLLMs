@@ -148,6 +148,8 @@ def compare_and_calculate_reward_cot(cot, target_answer):
         reward = check_answer(extracted_ans, target_answer)
         if reward == 0:
             reward = args["reward_contains_answer_trigger"]
+        else:
+            reward = args["reward_no_answer_trigger"]
     return reward
 
 
@@ -1515,6 +1517,7 @@ if __name__ == "__main__":
         reward_no_cot: float = field(default=0.0)
         no_cot_threshold: int = field(default=0)
         unfreeze_policy_after_n_steps: int = field(default=0)
+        reward_no_answer_trigger: float = field(default=-1.0)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()
