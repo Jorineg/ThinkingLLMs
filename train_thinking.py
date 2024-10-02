@@ -1322,8 +1322,13 @@ def main(args):
     # torch compile generate function
     torch._dynamo.config.suppress_errors = True
     model.generate = torch.compile(model.generate)
-    torch.set_float32_matmul_precision('high')
-    
+    torch.set_float32_matmul_precision("high")
+
+    accelerator.print("Compile model....")
+    if accelerator.is_main_process:
+        model.generate(input_ids=torch.tensor([[1]]), max_new_tokens=1)
+    torch.distributed.barrier()
+    accelerator.print("Compile model done")
 
     model, optimizer, train_dataloader, test_all_dataloader = accelerator.prepare(
         model, optimizer, train_dataloader, test_all_dataloader
