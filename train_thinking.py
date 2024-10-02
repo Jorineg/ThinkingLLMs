@@ -1312,7 +1312,7 @@ def main(args):
             # Create a list of lambda functions, one for each parameter group
             lr_lambdas = []
             for group in optimizer.param_groups:
-                if any("v_head" in n for n, _ in group["params"]):
+                if len(group['params'])>0 and group['params'][0].shape == model.v_head.summary.weight.shape:
                     lr_lambdas.append(lr_lambda_value_head)
                 else:
                     lr_lambdas.append(lr_lambda_policy)
