@@ -1300,25 +1300,25 @@ def main(args):
         ]
 
     class PolicyFreezingScheduler(LambdaLR):
-        def __init__(self, optimizer, freeze_steps, last_epoch=-1):
+        def __init__(self, optimizer, freeze_steps, total_steps, last_epoch=-1):
             self.freeze_steps = freeze_steps
-
-            def lr_lambda(current_step: int):
-                if current_step < freeze_steps:
-                    return [
-                        (
-                            0.0
-                            if len(group["params"]) > 0
-                            and group["params"][0].shape
-                            != model.v_head.summary.weight.shape
-                            else 1.0
-                        )
-                        for group in optimizer.param_groups
-                    ]
+            self.total_steps = total_steps
+            
+            def lr_lambda_policy(current_step: int):
+                return 0.0 if current_step < freeze_steps else 1.0
+            
+            def lr_lambda_value_head(current_step: int):
+                return 1.0  # Always active
+            
+            # Create a list of lambda functions, one for each parameter group
+            lr_lambdas = []
+            for group in optimizer.param_groups:
+                if any('v_head' in n for n, _ in group['params']):
+                    lr_lambdas.append(lr_lambda_value_head)
                 else:
-                    return [1.0 for _ in optimizer.param_groups]
-
-            super().__init__(optimizer, lr_lambda, last_epoch)
+                    lr_lambdas.append(lr_lambda_policy)
+            
+            super().__init__(optimizer, lr_lambdas, last_epoch)
 
     optimizer = torch.optim.AdamW(
         optimizer_grouped_parameters, lr=args["learning_rate"], eps=1e-8
