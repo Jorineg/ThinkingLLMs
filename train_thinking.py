@@ -149,8 +149,8 @@ def compare_and_calculate_reward_cot(cot, target_answer):
         reward = check_answer(extracted_ans, target_answer)
         if reward == 0:
             reward = args["reward_contains_answer_trigger"]
-        else:
-            reward = args["reward_no_answer_trigger"]
+    else:
+        reward = args["reward_no_answer_trigger"]
     return reward
 
 
