@@ -1304,6 +1304,8 @@ def main(args):
             self.freeze_steps = freeze_steps
 
             def lr_lambda_policy(current_step: int):
+                if current_step == freeze_steps:
+                    print("Unfreeze policy network")
                 return 0.0 if current_step < freeze_steps else 1.0
 
             def lr_lambda_value_head(current_step: int):
@@ -1312,7 +1314,9 @@ def main(args):
             # Create a list of lambda functions, one for each parameter group
             lr_lambdas = []
             for group in optimizer.param_groups:
-                if len(group['params'])>0 and (group['lr']==args["value_head_learning_rate"]):
+                if len(group["params"]) > 0 and (
+                    group["lr"] == args["value_head_learning_rate"]
+                ):
                     lr_lambdas.append(lr_lambda_value_head)
                 else:
                     lr_lambdas.append(lr_lambda_policy)
