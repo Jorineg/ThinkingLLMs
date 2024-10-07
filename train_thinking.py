@@ -80,6 +80,9 @@ answer_trigger_token_count = -1
 
 policy_model_frozen = True
 
+pg_loss_ema = 0.0
+vf_loss_ema = 0.0
+
 
 def format_input_batch(
     input_batch, enable_penalty=True, penalties=None, answer_trigger="", outputs=None
@@ -702,7 +705,7 @@ def train_one_epoch(
     summary_log_dict,
     most_recent_ckpts_paths,
 ):
-    global policy_model_frozen
+    global policy_model_frozen, pg_loss_ema, vf_loss_ema
     # reporter.report()
     model_dir = args["model_dir"]
     clip_grad_norm = args.get("clip_grad_norm", None)
@@ -838,12 +841,10 @@ def train_one_epoch(
                     pg_losses2 = -cur_adv[:, :-1] * torch.clamp(
                         ratio, 1.0 - 0.2, 1.0 + 0.2
                     )
-                    pg_loss = (
-                        (torch.max(pg_losses, pg_losses2) * cur_mask[:, :-1]).sum(
-                            dim=-1
-                        )
-                        / resp_len_per_sample
-                    ).mean()
+                    # Compute per-sample policy gradient loss (shape: [batch_size])
+                    pg_loss_per_sample = (
+                        torch.max(pg_losses, pg_losses2) * cur_mask[:, :-1]
+                    ).sum(dim=-1) / resp_len_per_sample
 
                     # value loss
                     vpredclipped = torch.max(
@@ -851,17 +852,42 @@ def train_one_epoch(
                     )
                     vf_losses1 = (vpreds - cur_ret) ** 2
                     vf_losses2 = (vpredclipped - cur_ret) ** 2
-                    vf_loss = (
-                        0.5
-                        * (
-                            (torch.max(vf_losses1, vf_losses2) * cur_mask).sum(dim=-1)
-                            / resp_len_per_sample
-                        ).mean()
+                    # Compute per-sample value function loss (shape: [batch_size])
+                    vf_loss_per_sample = 0.5 * (
+                        (torch.max(vf_losses1, vf_losses2) * cur_mask).sum(dim=-1)
+                        / resp_len_per_sample
                     )
-                    # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
 
-                    # total loss
-                    loss += pg_loss + vf_coef * vf_loss
+                    # Update EMA for policy gradient loss
+                    pg_loss_mean = pg_loss_per_sample.abs().mean().item()
+                    pg_loss_ema = (
+                        args["ema_decay"] * pg_loss_ema
+                        + (1.0 - args["ema_decay"]) * pg_loss_mean
+                    )
+
+                    # Update EMA for value function loss
+                    vf_loss_mean = vf_loss_per_sample.abs().mean().item()
+                    vf_loss_ema = (
+                        args["ema_decay"] * vf_loss_ema
+                        + (1.0 - args["ema_decay"]) * vf_loss_mean
+                    )
+
+                    # Compute scaling factors
+                    pg_scale = 1.0 / (pg_loss_ema + 1e-8)
+                    vf_scale = 1.0 / (vf_loss_ema + 1e-8)
+
+                    # Normalize the losses
+                    pg_loss_normalized = pg_loss_per_sample * pg_scale
+                    vf_loss_normalized = vf_loss_per_sample * vf_scale
+
+                    # Compute mean losses
+                    pg_loss = pg_loss_normalized.mean()
+                    vf_loss = vf_loss_normalized.mean()
+
+                    # Total loss with normalized losses
+                    loss = pg_loss + vf_coef * vf_loss
+
+                    # vf_loss = 0.5 * ((torch.max(vf_losses1, vf_losses2) * cur_mask).sum() / cur_mask.sum())
 
                     # token related metrics
                     mean_query_len = torch.mean(
@@ -1533,6 +1559,7 @@ if __name__ == "__main__":
         no_cot_threshold: int = field(default=0)
         unfreeze_policy_after_n_steps: int = field(default=0)
         reward_no_answer_trigger: float = field(default=-1.0)
+        ema_decay: float = field(default=0.99)
 
     parser = HfArgumentParser(Arguments)
     (args,) = parser.parse_args_into_dataclasses()

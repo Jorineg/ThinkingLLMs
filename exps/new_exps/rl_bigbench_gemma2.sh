@@ -33,7 +33,7 @@ learning_rate="3e-7"
 weight_decay="0"
 warmup_step="0"
 clip_grad_norm="1"
-vf_coef="5"
+vf_coef="0.8"
 kl_coef="0.02"
 gamma="1.0"
 lam="0.999"
@@ -55,6 +55,7 @@ repeat_samples="0"
 reward_no_cot="-1"
 no_cot_threshold="50"
 unfreeze_policy_after_n_steps="5"
+ema_decay="0.99"
 
 num_processes='2'
 main_process_port='8889'
@@ -118,5 +119,6 @@ accelerate launch \
         --reward_no_cot "${reward_no_cot}" \
         --no_cot_threshold "${no_cot_threshold}" \
         --unfreeze_policy_after_n_steps "${unfreeze_policy_after_n_steps}" \
+        --ema_decay "${ema_decay}" \
         1> >(tee "${model_dir}"/"${exp_name}".log) \
         2> >(tee "${model_dir}"/"${exp_name}".err >&2)
