@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=test
-#SBATCH --partition=gpu-test
+#SBATCH --partition=gpu-2d
 #SBATCH --gpus-per-node=2
 #SBATCH --ntasks-per-node=2
 #SBATCH --constraint="80gb"
