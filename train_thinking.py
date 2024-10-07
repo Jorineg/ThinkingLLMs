@@ -1328,13 +1328,13 @@ def main(args):
     )
 
     # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=num_training_steps)
-    # scheduler = get_constant_schedule_with_warmup(
-    #     optimizer, num_warmup_steps=warmup_step
-    # )
-
-    scheduler = PolicyFreezingScheduler(
-        optimizer, args["unfreeze_policy_after_n_steps"]
+    scheduler = get_constant_schedule_with_warmup(
+        optimizer, num_warmup_steps=warmup_step
     )
+
+    # scheduler = PolicyFreezingScheduler(
+    #     optimizer, args["unfreeze_policy_after_n_steps"]
+    # )
 
     # torch compile generate function
     torch._dynamo.config.suppress_errors = True
