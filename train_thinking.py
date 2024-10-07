@@ -958,12 +958,12 @@ def train_one_epoch(
                             total_grad_norm = accelerator.clip_grad_norm_(
                                 model.parameters(), clip_grad_norm
                             )
-                    # torch.cuda.empty_cache()
-                    # reporter.report()
-                    # free torch memory
-                    optimizer.step()
-                    model.zero_grad()
-                    optimizer.zero_grad()
+                        # torch.cuda.empty_cache()
+                        # reporter.report()
+                        # free torch memory
+                        optimizer.step()
+                        model.zero_grad()
+                        optimizer.zero_grad()
 
                     # Update running stats
                     n_correct, total = do_gather([sum(correctness), len(correctness)])
