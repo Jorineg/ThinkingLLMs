@@ -970,8 +970,8 @@ def train_one_epoch(
                     train_stats["acc"] = n_correct / total
                     train_stats["ncor"] = n_correct
                     train_stats["total"] = total
-                    train_stats["pg_loss"] = pg_loss.item()
-                    train_stats["vf_loss"] = vf_loss.item()
+                    train_stats["pg_loss"] = pg_loss_mean
+                    train_stats["vf_loss"] = vf_loss_mean
                     train_stats["vf_expl_var"] = vf_expl_var
 
                     for k, v in train_stats.items():
@@ -1001,8 +1001,8 @@ def train_one_epoch(
                                 "acc/ncor": train_stats["ncor"],
                                 "acc/total": train_stats["total"],
                                 "loss/loss:": loss,
-                                "loss/pg_loss": pg_loss,
-                                "loss/vf_loss": vf_loss,
+                                "loss/pg_loss": pg_loss_mean,
+                                "loss/vf_loss": vf_loss_mean,
                                 "tokens/mean_query_len": mean_query_len,
                                 "tokens/std_query_len": std_query_len,
                                 "tokens/mean_resp_len": mean_resp_len,
