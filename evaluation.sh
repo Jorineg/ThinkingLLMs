@@ -1,7 +1,7 @@
 #!/bin/bash
 export TOKENIZERS_PARALLELISM=True
 
-model_name="google/gemma-2-2b-it"
+model_name="jeggers/gemma-2-2b-cot-only-finetuned"
 dataset_name= "jeggers/CoT-Collection"
 split_name="test_in_dist"
 question_column_name="final_input"
